@@ -5,7 +5,7 @@ import { FileStack, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
-type Props = { isAdmin?: boolean; email?: string | null };
+type Props = { isAdmin?: boolean | undefined; email?: string | null | undefined };
 
 export function AppHeader({ isAdmin = false, email }: Props) {
   const navigate = useNavigate();
