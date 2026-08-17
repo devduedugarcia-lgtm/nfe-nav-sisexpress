@@ -14,16 +14,151 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      certificates: {
+        Row: {
+          file_name: string
+          id: string
+          uploaded_at: string
+          user_id: string
+          valid_until: string
+        }
+        Insert: {
+          file_name: string
+          id?: string
+          uploaded_at?: string
+          user_id: string
+          valid_until: string
+        }
+        Update: {
+          file_name?: string
+          id?: string
+          uploaded_at?: string
+          user_id?: string
+          valid_until?: string
+        }
+        Relationships: []
+      }
+      invoices: {
+        Row: {
+          access_key: string
+          created_at: string
+          direction: string
+          doc_type: string
+          id: string
+          issued_at: string
+          issuer_cnpj: string
+          issuer_name: string
+          number: string
+          recipient_cnpj: string | null
+          recipient_name: string
+          series: string
+          status: string
+          total_amount: number
+          user_id: string
+          xml_content: string
+        }
+        Insert: {
+          access_key: string
+          created_at?: string
+          direction: string
+          doc_type: string
+          id?: string
+          issued_at: string
+          issuer_cnpj: string
+          issuer_name: string
+          number: string
+          recipient_cnpj?: string | null
+          recipient_name: string
+          series: string
+          status?: string
+          total_amount?: number
+          user_id: string
+          xml_content: string
+        }
+        Update: {
+          access_key?: string
+          created_at?: string
+          direction?: string
+          doc_type?: string
+          id?: string
+          issued_at?: string
+          issuer_cnpj?: string
+          issuer_name?: string
+          number?: string
+          recipient_cnpj?: string | null
+          recipient_name?: string
+          series?: string
+          status?: string
+          total_amount?: number
+          user_id?: string
+          xml_content?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string | null
+          id: string
+          status: Database["public"]["Enums"]["account_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name?: string | null
+          id: string
+          status?: Database["public"]["Enums"]["account_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string | null
+          id?: string
+          status?: Database["public"]["Enums"]["account_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      account_status: "pending" | "approved" | "rejected"
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +285,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      account_status: ["pending", "approved", "rejected"],
+      app_role: ["admin", "user"],
+    },
   },
 } as const
