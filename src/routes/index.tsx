@@ -203,7 +203,7 @@ function AuthPage() {
           <button
             type="button"
             className="mt-4 text-sm font-medium text-primary underline-offset-4 hover:underline"
-            onClick={() => setMode(mode === "login" ? "login" : "login") || setMode(mode === "login" ? "register" : "login")}
+            onClick={() => setMode(mode === "login" ? "register" : "login")}
           >
             {mode === "login" ? "Criar conta" : "Já tenho conta, entrar"}
           </button>
