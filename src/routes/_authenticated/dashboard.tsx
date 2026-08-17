@@ -137,7 +137,7 @@ function DashboardPage() {
 
   const session = useQuery({ queryKey: ["session"], queryFn: () => loadSession() });
 
-  if (session.isSuccess && session.data.profile?.status !== "approved") {
+  if (session.isSuccess && session.data.profile && session.data.profile.status !== "approved") {
     navigate({ to: "/pending-approval", replace: true });
   }
 
