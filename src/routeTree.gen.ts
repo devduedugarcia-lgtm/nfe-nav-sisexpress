@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as PendingApprovalRouteImport } from './routes/pending-approval'
 import { Route as AuthenticatedCertificateRouteImport } from './routes/_authenticated/certificate'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
 
 const IndexRoute = IndexRouteImport.update({
@@ -35,6 +36,11 @@ const AuthenticatedCertificateRoute =
     path: '/certificate',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   id: '/admin/users',
   path: '/admin/users',
@@ -45,12 +51,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/pending-approval': typeof PendingApprovalRoute
   '/certificate': typeof AuthenticatedCertificateRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/pending-approval': typeof PendingApprovalRoute
   '/certificate': typeof AuthenticatedCertificateRoute
+  '/dashboard': typeof AuthenticatedDashboardRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
 }
 export interface FileRoutesById {
@@ -59,19 +67,22 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/pending-approval': typeof PendingApprovalRoute
   '/_authenticated/certificate': typeof AuthenticatedCertificateRoute
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/pending-approval' | '/certificate' | '/admin/users'
+  fullPaths:
+    '/' | '/pending-approval' | '/certificate' | '/dashboard' | '/admin/users'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/pending-approval' | '/certificate' | '/admin/users'
+  to: '/' | '/pending-approval' | '/certificate' | '/dashboard' | '/admin/users'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/pending-approval'
     | '/_authenticated/certificate'
+    | '/_authenticated/dashboard'
     | '/_authenticated/admin/users'
   fileRoutesById: FileRoutesById
 }
@@ -111,6 +122,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCertificateRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/users': {
       id: '/_authenticated/admin/users'
       path: '/admin/users'
@@ -123,11 +141,13 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCertificateRoute: typeof AuthenticatedCertificateRoute
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCertificateRoute: AuthenticatedCertificateRoute,
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
 }
 
