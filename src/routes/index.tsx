@@ -46,8 +46,20 @@ function AuthPage() {
   const [checking, setChecking] = useState(true);
 
   async function routeByStatus() {
-    const session = await loadSession();
-    if (session.profile?.status === "approved") {
+    // Right after sign-in the bearer token may not be attached yet, so retry
+    // until the profile is readable.
+    let profile: { status: string } | null = null;
+    for (let attempt = 0; attempt < 4 && !profile; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 400));
+      try {
+        const session = await loadSession();
+        profile = session.profile;
+      } catch {
+        profile = null;
+      }
+    }
+
+    if (profile?.status === "approved") {
       navigate({ to: "/dashboard", replace: true });
     } else {
       navigate({ to: "/pending-approval", replace: true });
