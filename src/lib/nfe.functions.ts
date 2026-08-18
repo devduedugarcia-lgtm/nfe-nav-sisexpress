@@ -130,16 +130,18 @@ export const exportInvoicesZip = createServerFn({ method: "POST" })
 
     const { data: rows, error } = await query.limit(500);
     if (error) throw new Error(error.message);
-    if (!rows || rows.length === 0) return { base64: null, count: 0 };
+    if (!rows || rows.length === 0) return { base64: null, count: 0, inbound: 0, outbound: 0 };
 
     const base64 = buildZipBase64(
       rows.map((row) => ({
-        name: `${row.doc_type}-${row.number}-${row.access_key}.xml`,
+        name: `${row.direction === "entrada" ? "entradas" : "saidas"}/${row.doc_type}-${row.number}-${row.access_key}.xml`,
         content: row.xml_content,
       })),
     );
 
-    return { base64, count: rows.length };
+    const inbound = rows.filter((row) => row.direction === "entrada").length;
+
+    return { base64, count: rows.length, inbound, outbound: rows.length - inbound };
   });
 
 export const clearInvoices = createServerFn({ method: "POST" })
