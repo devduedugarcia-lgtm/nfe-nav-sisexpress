@@ -289,7 +289,7 @@ function DashboardPage() {
         </section>
 
         <section className="mt-6 rounded-lg border border-border bg-card p-4">
-          <div className="grid gap-4 lg:grid-cols-4">
+          <div className="grid gap-4 lg:grid-cols-3">
             <div className="space-y-2">
               <Label>Período</Label>
               <Select value={preset} onValueChange={applyPreset}>
@@ -333,129 +333,156 @@ function DashboardPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Tipo</Label>
-              <Select value={docType} onValueChange={(value) => setDocType(value as typeof docType)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os tipos</SelectItem>
-                  <SelectItem value="NFe">NFe</SelectItem>
-                  <SelectItem value="NFCe">NFCe</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Direção</Label>
-              <Select
-                value={direction}
-                onValueChange={(value) => setDirection(value as typeof direction)}
+            <div className="flex items-end">
+              <Button
+                className="w-full"
+                onClick={() => search.mutate()}
+                disabled={search.isPending}
               >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Entradas e saídas</SelectItem>
-                  <SelectItem value="entrada">Entradas</SelectItem>
-                  <SelectItem value="saida">Saídas</SelectItem>
-                </SelectContent>
-              </Select>
+                {search.isPending ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <CloudDownload className="mr-2 size-4" />
+                )}
+                Buscar no SEFAZ
+              </Button>
             </div>
           </div>
+        </section>
 
-          <form
-            className="mt-4 flex flex-wrap gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setAppliedSearch(searchInput.trim());
-              search.mutate();
-            }}
-          >
+        <form
+          className="mt-4 flex flex-col gap-2 sm:flex-row"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setAppliedSearch(searchInput.trim());
+          }}
+        >
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchInput}
               maxLength={120}
               onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Buscar por emitente, destinatário, número ou chave de acesso"
-              className="min-w-64 flex-1"
+              onBlur={() => setAppliedSearch(searchInput.trim())}
+              placeholder="Buscar por emitente, destinatário, chave ou número…"
+              className="pl-9"
             />
-            <Button type="submit" disabled={search.isPending}>
-              {search.isPending ? (
-                <Loader2 className="mr-2 size-4 animate-spin" />
-              ) : (
-                <Search className="mr-2 size-4" />
-              )}
-              Buscar
-            </Button>
-          </form>
-        </section>
+          </div>
+          <Select value={docType} onValueChange={(value) => setDocType(value as typeof docType)}>
+            <SelectTrigger className="sm:w-40" aria-label="Tipo de documento">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os tipos</SelectItem>
+              <SelectItem value="NFe">NFe</SelectItem>
+              <SelectItem value="NFCe">NFCe</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={direction}
+            onValueChange={(value) => setDirection(value as typeof direction)}
+          >
+            <SelectTrigger className="sm:w-40" aria-label="Direção">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              <SelectItem value="entrada">Recebidas</SelectItem>
+              <SelectItem value="saida">Emitidas</SelectItem>
+            </SelectContent>
+          </Select>
+        </form>
 
-        <section className="mt-6 overflow-x-auto rounded-lg border border-border bg-card">
+        <section className="mt-3 overflow-x-auto rounded-lg border border-border bg-card">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Número</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Direção</TableHead>
-                <TableHead>Emitente</TableHead>
-                <TableHead>Emissão</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead>Situação</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="text-[11px] font-semibold uppercase tracking-wide">
+                  Número
+                </TableHead>
+                <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wide lg:table-cell">
+                  Chave de acesso
+                </TableHead>
+                <TableHead className="text-[11px] font-semibold uppercase tracking-wide">
+                  Emitente
+                </TableHead>
+                <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wide md:table-cell">
+                  Destinatário
+                </TableHead>
+                <TableHead className="text-[11px] font-semibold uppercase tracking-wide">
+                  Data
+                </TableHead>
+                <TableHead className="text-right text-[11px] font-semibold uppercase tracking-wide">
+                  Valor
+                </TableHead>
+                <TableHead className="text-[11px] font-semibold uppercase tracking-wide">
+                  Tipo
+                </TableHead>
+                <TableHead className="text-[11px] font-semibold uppercase tracking-wide">
+                  Status
+                </TableHead>
+                <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {invoices.isLoading && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
                     Carregando notas…
                   </TableCell>
                 </TableRow>
               )}
               {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-medium">{row.number}</TableCell>
-                  <TableCell>{row.doc_type}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {row.direction === "entrada" ? "Entrada" : "Saída"}
+                <TableRow
+                  key={row.id}
+                  className="cursor-pointer"
+                  onClick={() => setSelected(row)}
+                >
+                  <TableCell className="py-4 font-semibold">{row.number}</TableCell>
+                  <TableCell className="hidden max-w-36 py-4 font-mono text-xs leading-4 break-all text-muted-foreground lg:table-cell">
+                    {row.access_key}
                   </TableCell>
-                  <TableCell className="max-w-56 truncate">{row.issuer_name}</TableCell>
-                  <TableCell className="text-muted-foreground">{formatDate(row.issued_at)}</TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="max-w-48 truncate py-4">{row.issuer_name}</TableCell>
+                  <TableCell className="hidden max-w-48 truncate py-4 md:table-cell">
+                    {row.recipient_name}
+                  </TableCell>
+                  <TableCell className="py-4 text-sm text-muted-foreground">
+                    {formatDateTime(row.issued_at)}
+                  </TableCell>
+                  <TableCell className="py-4 text-right font-semibold">
                     {formatCurrency(Number(row.total_amount))}
                   </TableCell>
-                  <TableCell>
-                    <Badge variant={row.status === "Autorizada" ? "default" : "destructive"}>
-                      {row.status}
-                    </Badge>
+                  <TableCell className="py-4">
+                    <DocTypeBadge type={row.doc_type} />
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setSelected(row)}
-                        aria-label={`Ver detalhes da nota ${row.number}`}
-                      >
-                        <Eye className="size-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => download.mutate(row.id)}
-                        aria-label={`Baixar XML da nota ${row.number}`}
-                      >
-                        <Download className="size-4" />
-                      </Button>
+                  <TableCell className="py-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <DirectionLabel direction={row.direction} />
+                      {row.status !== "Autorizada" && (
+                        <Badge variant="destructive">{row.status}</Badge>
+                      )}
                     </div>
+                  </TableCell>
+                  <TableCell className="py-4 text-right">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        download.mutate(row.id);
+                      }}
+                      aria-label={`Baixar XML da nota ${row.number}`}
+                    >
+                      <Download className="size-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
               {invoices.isSuccess && rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
-                    Nenhuma nota no filtro atual. Use o botão Buscar para consultar o SEFAZ.
+                  <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
+                    Nenhuma nota no filtro atual. Use o botão Buscar no SEFAZ para consultar o
+                    período.
                   </TableCell>
                 </TableRow>
               )}
