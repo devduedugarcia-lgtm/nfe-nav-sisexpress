@@ -565,3 +565,30 @@ function Detail({ label, value, mono }: { label: string; value: string; mono?: b
     </div>
   );
 }
+
+function DocTypeBadge({ type }: { type: string }) {
+  const isNfce = type === "NFCe";
+  return (
+    <span
+      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${
+        isNfce ? "border-warning/40 text-warning" : "border-primary/40 text-primary"
+      }`}
+    >
+      {type}
+    </span>
+  );
+}
+
+function DirectionLabel({ direction }: { direction: string }) {
+  const inbound = direction === "entrada";
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-sm font-medium ${
+        inbound ? "text-warning" : "text-primary"
+      }`}
+    >
+      {inbound ? <ArrowDownLeft className="size-4" /> : <ArrowUpRight className="size-4" />}
+      {inbound ? "Recebida" : "Emitida"}
+    </span>
+  );
+}
