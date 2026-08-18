@@ -229,9 +229,10 @@ function DashboardPage() {
       <main className="mx-auto max-w-7xl px-4 py-8">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-foreground">Painel de notas fiscais</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Painel de notas fiscais - SisExpress</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Consulte o SEFAZ, acompanhe os resumos e baixe os XMLs das notas.
+              {"\n\n"}
             </p>
           </div>
           <div className="flex gap-2">
