@@ -134,12 +134,14 @@ export const exportInvoicesZip = createServerFn({ method: "POST" })
 
     const base64 = buildZipBase64(
       rows.map((row) => ({
-        name: `${row.doc_type}-${row.number}-${row.access_key}.xml`,
+        name: `${row.direction === "entrada" ? "entradas" : "saidas"}/${row.doc_type}-${row.number}-${row.access_key}.xml`,
         content: row.xml_content,
       })),
     );
 
-    return { base64, count: rows.length };
+    const inbound = rows.filter((row) => row.direction === "entrada").length;
+
+    return { base64, count: rows.length, inbound, outbound: rows.length - inbound };
   });
 
 export const clearInvoices = createServerFn({ method: "POST" })
