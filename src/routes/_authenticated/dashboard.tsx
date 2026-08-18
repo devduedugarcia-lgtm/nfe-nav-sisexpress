@@ -184,7 +184,9 @@ function DashboardPage() {
         return;
       }
       downloadBase64(`notas-fiscais-${range.from}-a-${range.to}.zip`, result.base64);
-      toast.success(`${result.count} XML(s) exportado(s)`);
+      toast.success(
+        `${result.count} XML(s) exportado(s) · ${result.inbound} em entradas/ e ${result.outbound} em saidas/`,
+      );
     },
     onError: (error: Error) => toast.error(error.message),
   });
