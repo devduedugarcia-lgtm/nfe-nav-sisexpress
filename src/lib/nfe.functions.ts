@@ -130,7 +130,7 @@ export const exportInvoicesZip = createServerFn({ method: "POST" })
 
     const { data: rows, error } = await query.limit(500);
     if (error) throw new Error(error.message);
-    if (!rows || rows.length === 0) return { base64: null, count: 0 };
+    if (!rows || rows.length === 0) return { base64: null, count: 0, inbound: 0, outbound: 0 };
 
     const base64 = buildZipBase64(
       rows.map((row) => ({
