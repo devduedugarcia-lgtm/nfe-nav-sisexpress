@@ -5,8 +5,8 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  CloudDownload,
   Download,
-  Eye,
   FileArchive,
   Loader2,
   Receipt,
@@ -48,7 +48,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { downloadBase64, downloadText, formatCurrency, formatDate } from "@/lib/download";
+import {
+  downloadBase64,
+  downloadText,
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+} from "@/lib/download";
 import {
   clearInvoices,
   exportInvoicesZip,
