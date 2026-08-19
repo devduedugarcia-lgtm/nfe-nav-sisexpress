@@ -112,6 +112,7 @@ type Invoice = {
   total_amount: number;
   status: string;
   xml_content: string;
+  source?: string | null;
 };
 
 function toInputDate(date: Date) {
