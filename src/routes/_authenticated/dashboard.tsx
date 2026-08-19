@@ -147,6 +147,7 @@ function DashboardPage() {
   const loadSefazAccount = useServerFn(getSefazAccount);
   const persistSefazAccount = useServerFn(saveSefazAccount);
   const resetCursor = useServerFn(resetSefazCursor);
+  const runBridgeTest = useServerFn(testSefazBridge);
   const fetchXml = useServerFn(getInvoiceXml);
   const exportZip = useServerFn(exportInvoicesZip);
   const wipeInvoices = useServerFn(clearInvoices);
@@ -234,6 +235,27 @@ function DashboardPage() {
   });
 
   const restartCursor = useMutation({
+    mutationFn: () => resetCursor(),
+    onSuccess: () => {
+      toast.success("Contador NSU reiniciado: a próxima sincronização busca desde o início");
+      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const bridgeTest = useMutation({
+    mutationFn: () => runBridgeTest(),
+    onSuccess: (result) => {
+      const cert = result.certificate?.validUntil
+        ? ` · certificado válido até ${result.certificate.validUntil}`
+        : "";
+      if (result.ok) toast.success(`${result.message}${cert}`);
+      else toast.error(result.message);
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const unusedRestartCursor = useMutation({
     mutationFn: () => resetCursor(),
     onSuccess: () => {
       toast.success("Contador NSU reiniciado: a próxima sincronização busca desde o início");
