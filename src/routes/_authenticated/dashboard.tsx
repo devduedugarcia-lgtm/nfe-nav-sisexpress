@@ -506,6 +506,15 @@ function DashboardPage() {
                 )}
               </div>
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => bridgeTest.mutate()}
+                  disabled={bridgeTest.isPending}
+                >
+                  {bridgeTest.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+                  Testar conexão
+                </Button>
                 <Dialog open={configOpen} onOpenChange={setConfigOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm" onClick={openConfig}>
