@@ -1,51 +1,51 @@
-# Publicar ponte SEFAZ no Render + app Lovable
+# Conectar o app ao serviço publicado e testar a SEFAZ
 
-Você quer publicar os dois serviços e escolheu o **Render** para hospedar a
-ponte Node.js. A ordem importa: primeiro a ponte (para termos URL/token), depois
-o app (para cadastrar os segredos e testar).
+O serviço já responde: `GET https://sefaz-bridge-a33m.onrender.com/health`
+devolveu `200 {"ok":true}`. Ou seja, está no ar e o Render subiu o processo.
 
-## 1. Publicar a ponte SEFAZ no Render
+## Antes de tudo: as credenciais foram expostas no chat
 
-A ponte é a pasta `sefaz-bridge/` do repositório. Ela NÃO faz parte do build
-do app Lovable; é um serviço independente.
+Você colou o token da ponte e a senha do certificado direto na conversa. Isso
+deixa esses valores registrados no histórico, então o certo é trocá-los:
 
-Passos:
-1. Vá em https://dashboard.render.com e crie um novo **Web Service**.
-2. Conecte o mesmo repositório Git deste projeto Lovable.
-3. Configure:
-   - **Root directory**: `sefaz-bridge` (Render roda o build a partir desta pasta)
-   - **Build command**: `npm install`
-   - **Start command**: `npm start`
-   - **Runtime**: Node
-4. Adicione as variáveis de ambiente obrigatórias:
-   - `BRIDGE_TOKEN` — crie uma string longa e aleatória (ex.: 64 caracteres)
-   - `CERT_PASSWORD` — senha do certificado A1
-   - `CERT_PFX_BASE64` — conteúdo do `.pfx`/`.p12` em base64
-5. Aguarde o deploy. A URL pública será algo como `https://sefaz-bridge-xxx.onrender.com`.
-6. Teste rápido: `curl https://<URL>/health` deve devolver `{ "ok": true }`.
+1. No Render, gere um **novo** `BRIDGE_TOKEN` (string longa e aleatória) e
+   atualize a variável de ambiente do serviço.
+2. A senha do certificado A1 não pode ser trocada, mas ela só é útil junto com
+   o arquivo `.pfx` — mantenha o `.pfx` fora de qualquer chat, e-mail ou
+   repositório. Nunca vou pedir nem armazenar essa senha no app.
+3. Depois disso, eu abro o formulário seguro e você cola lá a URL e o token
+   novo — os valores vão direto para o cofre, sem passar pela conversa.
 
-## 2. Guardar URL e token no app Lovable
+## Etapas
 
-Depois que a ponte estiver no ar:
-1. Você me passa a URL pública e o `BRIDGE_TOKEN`.
-2. Eu guardo como segredos do projeto: `SEFAZ_BRIDGE_URL` e `SEFAZ_BRIDGE_TOKEN`.
-3. Esses valores nunca aparecem no código nem no navegador — só o backend do
-   app usa.
+1. **Guardar URL e token no cofre**
+   Formulário seguro para `SEFAZ_BRIDGE_URL` (`https://sefaz-bridge-a33m.onrender.com`)
+   e `SEFAZ_BRIDGE_TOKEN` (o token novo).
 
-## 3. Publicar o app Lovable
+2. **Testar conexão pelo painel**
+   Botão "Testar conexão" (já existe) chama o `/health` com o Bearer token.
+   Isso confirma que o token cadastrado no app é aceito pelo serviço.
 
-Com a ponte rodando e os segredos salvos:
-1. Eu verifico se não há erros críticos de segurança pendentes.
-2. Você clica em **Publish** no canto superior direito do editor Lovable.
-3. O app fica acessível na URL publicada (já existe: `nfe-nav-sisexpress.lovable.app`).
-4. Depois do publish, testamos a conexão real pela tela do app.
+3. **Cadastrar a conta fiscal**
+   CNPJ, UF e ambiente, com `ult_nsu` em 0.
 
-## O que preciso de você agora
+4. **Sincronizar um lote e conferir**
+   Rodo "Sincronizar com SEFAZ" no modo real e verifico no banco:
+   - código de retorno da SEFAZ (138 documentos / 137 nada novo / 656 consumo indevido);
+   - notas gravadas com `source = 'sefaz'` e `nsu` preenchido;
+   - avanço do `ult_nsu` e o comportamento da paginação;
+   - entrada/saída correta comparando o CNPJ do emitente com o seu.
 
-- Confirme se consegue criar o Web Service no Render com as informações acima.
-- Me envie a **URL pública** e o **token** após o deploy.
-- Informe o **CNPJ**, **UF** e se começamos em **homologação** ou **produção**.
+5. **Ajustes conforme o retorno real**
+   Mensagens do painel e estratégia de paginação afinadas pelo que a SEFAZ
+   devolver.
 
-Observação: em homologação a SEFAZ normalmente não devolve notas reais, então
-o teste completo com XMLs de verdade será em produção. Homologação já valida o
-caminho mTLS e a comunicação.
+## O que preciso de você
+
+- Token novo gerado no Render (para eu guardar no formulário seguro).
+- **CNPJ**, **UF** e se começamos em **homologação** ou **produção**.
+
+Observação: o `/health` atual só diz `{"ok":true}` — ele não informa se o
+certificado foi carregado. Se você quiser, incluo no serviço um retorno com
+titular e validade do certificado, para o teste de conexão distinguir
+"token errado" de "certificado errado" antes de acionar a SEFAZ.
