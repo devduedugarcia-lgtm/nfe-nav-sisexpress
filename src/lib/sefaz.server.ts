@@ -60,6 +60,7 @@ export async function checkBridgeHealth(): Promise<BridgeHealth> {
 
     let payload: {
       ok?: boolean;
+      message?: string;
       certificate?: { subject?: string | null; validUntil?: string | null } | null;
       certLoaded?: boolean;
       certValidUntil?: string | null;
@@ -76,9 +77,19 @@ export async function checkBridgeHealth(): Promise<BridgeHealth> {
         ? null
         : { subject: null, validUntil: payload.certValidUntil ?? null });
 
+    if (payload.ok === false || payload.certLoaded === false) {
+      return {
+        ok: false,
+        message: payload.message ?? "Serviço acessível, mas o certificado digital não foi carregado.",
+        certificate,
+      };
+    }
+
     return {
-      ok: payload.ok !== false,
-      message: "Serviço acessível e token aceito.",
+      ok: true,
+      message: payload.message
+        ? `Serviço acessível e token aceito. ${payload.message}`
+        : "Serviço acessível e token aceito.",
       certificate,
     };
   } catch (error) {
