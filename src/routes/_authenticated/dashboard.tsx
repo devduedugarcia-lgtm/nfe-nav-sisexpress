@@ -141,7 +141,11 @@ function DashboardPage() {
   const queryClient = useQueryClient();
   const loadSession = useServerFn(getSession);
   const fetchInvoices = useServerFn(listInvoices);
-  const runSearch = useServerFn(searchSefaz);
+  const runDemoSearch = useServerFn(searchSefazDemo);
+  const runSefazSync = useServerFn(syncSefaz);
+  const loadSefazAccount = useServerFn(getSefazAccount);
+  const persistSefazAccount = useServerFn(saveSefazAccount);
+  const resetCursor = useServerFn(resetSefazCursor);
   const fetchXml = useServerFn(getInvoiceXml);
   const exportZip = useServerFn(exportInvoicesZip);
   const wipeInvoices = useServerFn(clearInvoices);
@@ -153,6 +157,9 @@ function DashboardPage() {
   const [searchInput, setSearchInput] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [selected, setSelected] = useState<Invoice | null>(null);
+  const [mode, setMode] = useState<"demo" | "sefaz">("demo");
+  const [configOpen, setConfigOpen] = useState(false);
+  const [form, setForm] = useState({ cnpj: "", uf: "SP", environment: "homologacao" });
 
   const session = useQuery({ queryKey: ["session"], queryFn: () => loadSession() });
 
@@ -170,18 +177,78 @@ function DashboardPage() {
     queryFn: () => fetchInvoices({ data: filters }) as Promise<Invoice[]>,
   });
 
+  const sefazAccount = useQuery({
+    queryKey: ["sefaz-account"],
+    queryFn: () => loadSefazAccount(),
+  });
+
+  const account = sefazAccount.data?.account ?? null;
+  const bridgeConfigured = sefazAccount.data?.bridgeConfigured ?? false;
+
   const search = useMutation({
-    mutationFn: () => runSearch({ data: filters }),
+    mutationFn: () => runDemoSearch({ data: filters }),
     onSuccess: (result) => {
       toast.success(
         result.imported > 0
-          ? `${result.imported} nota(s) importada(s) do SEFAZ`
-          : "Nenhuma nota nova encontrada no período",
+          ? `${result.imported} nota(s) de demonstração geradas`
+          : "Nenhuma nota nova gerada no período",
       );
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
+
+  const sync = useMutation({
+    mutationFn: () => runSefazSync(),
+    onSuccess: (result) => {
+      if (result.imported > 0) {
+        toast.success(`${result.imported} nota(s) importada(s) do SEFAZ · ${result.status}`);
+      } else {
+        toast.info(result.status);
+      }
+      if (result.pending > 0) {
+        toast.info(`Ainda há ${result.pending} documento(s) na fila. Sincronize novamente.`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const saveAccount = useMutation({
+    mutationFn: () =>
+      persistSefazAccount({
+        data: {
+          cnpj: form.cnpj,
+          uf: form.uf,
+          environment: form.environment as "producao" | "homologacao",
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Configuração fiscal salva");
+      setConfigOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const restartCursor = useMutation({
+    mutationFn: () => resetCursor(),
+    onSuccess: () => {
+      toast.success("Contador NSU reiniciado: a próxima sincronização busca desde o início");
+      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  function openConfig() {
+    setForm({
+      cnpj: account?.cnpj ?? "",
+      uf: account?.uf ?? "SP",
+      environment: account?.environment ?? "homologacao",
+    });
+    setConfigOpen(true);
+  }
 
   const download = useMutation({
     mutationFn: (id: string) => fetchXml({ data: { id } }),
