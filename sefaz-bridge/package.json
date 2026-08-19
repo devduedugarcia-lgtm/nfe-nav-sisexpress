@@ -1,0 +1,17 @@
+{
+  "name": "sefaz-bridge",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Ponte Node.js entre o app e o webservice NFeDistribuicaoDFe da SEFAZ (requer TLS mutuo com certificado A1).",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
