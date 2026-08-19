@@ -93,18 +93,41 @@ function parseDocs(xml) {
 
 async function callSefaz(body, ambiente) {
   const url = ENDPOINTS[ambiente] ?? ENDPOINTS.homologacao;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/soap+xml; charset=utf-8" },
-    body,
-    // @ts-expect-error undici aceita o agent do Node via dispatcher no Node 20+
-    agent,
+  const target = new URL(url);
+
+  return new Promise((resolve, reject) => {
+    const request = https.request(
+      {
+        agent,
+        hostname: target.hostname,
+        path: target.pathname,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/soap+xml; charset=utf-8",
+          "Content-Length": Buffer.byteLength(body),
+        },
+        timeout: 60_000,
+      },
+      (response) => {
+        let text = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          text += chunk;
+        });
+        response.on("end", () => {
+          if ((response.statusCode ?? 500) >= 400) {
+            reject(new Error(`SEFAZ respondeu ${response.statusCode}: ${text.slice(0, 400)}`));
+            return;
+          }
+          resolve(text);
+        });
+      },
+    );
+
+    request.on("timeout", () => request.destroy(new Error("Tempo esgotado na SEFAZ")));
+    request.on("error", reject);
+    request.end(body);
   });
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`SEFAZ respondeu ${response.status}: ${text.slice(0, 400)}`);
-  }
-  return text;
 }
 
 const app = express();
