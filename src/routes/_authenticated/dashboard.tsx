@@ -255,15 +255,6 @@ function DashboardPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const unusedRestartCursor = useMutation({
-    mutationFn: () => resetCursor(),
-    onSuccess: () => {
-      toast.success("Contador NSU reiniciado: a próxima sincronização busca desde o início");
-      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
   function openConfig() {
     setForm({
       cnpj: account?.cnpj ?? "",
