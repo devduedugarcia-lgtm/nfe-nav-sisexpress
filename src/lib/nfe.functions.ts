@@ -216,13 +216,14 @@ export const syncSefaz = createServerFn({ method: "POST" })
     }
 
     const nextNsu = cursor;
+    const highest = Math.max(maxNSU, nextNsu);
 
     return {
       imported,
       status,
       ultNSU: nextNsu,
-      maxNSU: result.maxNSU || nextNsu,
-      pending: Math.max((result.maxNSU || nextNsu) - nextNsu, 0),
+      maxNSU: highest,
+      pending: Math.max(highest - nextNsu, 0),
     };
   });
 
