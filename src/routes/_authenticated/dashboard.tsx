@@ -378,7 +378,20 @@ function DashboardPage() {
         </section>
 
         <section className="mt-6 rounded-lg border border-border bg-card p-4">
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-4">
+            <div className="space-y-2">
+              <Label>Origem dos dados</Label>
+              <Select value={mode} onValueChange={(value) => setMode(value as typeof mode)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="demo">Demonstração</SelectItem>
+                  <SelectItem value="sefaz">SEFAZ real</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label>Período</Label>
               <Select value={preset} onValueChange={applyPreset}>
@@ -423,20 +436,147 @@ function DashboardPage() {
             </div>
 
             <div className="flex items-end">
-              <Button
-                className="w-full"
-                onClick={() => search.mutate()}
-                disabled={search.isPending}
-              >
-                {search.isPending ? (
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                ) : (
-                  <CloudDownload className="mr-2 size-4" />
-                )}
-                Buscar no SEFAZ
-              </Button>
+              {mode === "demo" ? (
+                <Button
+                  className="w-full"
+                  onClick={() => search.mutate()}
+                  disabled={search.isPending}
+                >
+                  {search.isPending ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : (
+                    <CloudDownload className="mr-2 size-4" />
+                  )}
+                  Gerar notas de demonstração
+                </Button>
+              ) : (
+                <Button
+                  className="w-full"
+                  onClick={() => sync.mutate()}
+                  disabled={sync.isPending || !account || !bridgeConfigured}
+                >
+                  {sync.isPending ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : (
+                    <CloudDownload className="mr-2 size-4" />
+                  )}
+                  Sincronizar com o SEFAZ
+                </Button>
+              )}
             </div>
           </div>
+
+          {mode === "sefaz" && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 p-3 text-sm">
+              <div className="space-y-1 text-muted-foreground">
+                {account ? (
+                  <p className="text-foreground">
+                    CNPJ {account.cnpj} · {account.uf} ·{" "}
+                    {account.environment === "producao" ? "Produção" : "Homologação"} · NSU{" "}
+                    {String(account.ult_nsu)}
+                  </p>
+                ) : (
+                  <p className="text-foreground">Configure o CNPJ e a UF para sincronizar.</p>
+                )}
+                {account?.last_sync_at && (
+                  <p>
+                    Última sincronização em {formatDateTime(account.last_sync_at)}
+                    {account.last_status ? ` · ${account.last_status}` : ""}
+                  </p>
+                )}
+                {!bridgeConfigured && (
+                  <p>
+                    Serviço de consulta ao SEFAZ ainda não conectado. Publique o serviço da pasta{" "}
+                    <code>sefaz-bridge</code> e cadastre a URL e o token.
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Dialog open={configOpen} onOpenChange={setConfigOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" onClick={openConfig}>
+                      <Settings2 className="mr-2 size-4" />
+                      Configuração fiscal
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Configuração fiscal</DialogTitle>
+                      <DialogDescription>
+                        Dados usados na consulta de distribuição de documentos da SEFAZ.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="cnpj">CNPJ</Label>
+                        <Input
+                          id="cnpj"
+                          value={form.cnpj}
+                          maxLength={18}
+                          placeholder="00000000000000"
+                          onChange={(event) =>
+                            setForm((current) => ({ ...current, cnpj: event.target.value }))
+                          }
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="uf">UF</Label>
+                          <Input
+                            id="uf"
+                            value={form.uf}
+                            maxLength={2}
+                            onChange={(event) =>
+                              setForm((current) => ({
+                                ...current,
+                                uf: event.target.value.toUpperCase(),
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Ambiente</Label>
+                          <Select
+                            value={form.environment}
+                            onValueChange={(value) =>
+                              setForm((current) => ({ ...current, environment: value }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="homologacao">Homologação</SelectItem>
+                              <SelectItem value="producao">Produção</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        onClick={() => saveAccount.mutate()}
+                        disabled={saveAccount.isPending}
+                      >
+                        {saveAccount.isPending && (
+                          <Loader2 className="mr-2 size-4 animate-spin" />
+                        )}
+                        Salvar
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => restartCursor.mutate()}
+                  disabled={restartCursor.isPending || !account}
+                >
+                  Reiniciar NSU
+                </Button>
+              </div>
+            </div>
+          )}
         </section>
 
         <form
