@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import https from "node:https";
+import tls from "node:tls";
 import express from "express";
 
 const PORT = process.env.PORT || 8787;
@@ -22,8 +23,30 @@ if (!CERT_PFX_PATH && !CERT_PFX_BASE64) {
 }
 
 const pfx = CERT_PFX_BASE64
-  ? Buffer.from(CERT_PFX_BASE64, "base64")
+  ? Buffer.from(CERT_PFX_BASE64.replace(/\s+/g, ""), "base64")
   : readFileSync(CERT_PFX_PATH);
+
+/** Explica erros comuns de certificado em linguagem util. */
+function describeCertError(error) {
+  const raw = error instanceof Error ? error.message : String(error);
+  if (/too long|header too long|not enough data|wrong tag|DER/i.test(raw)) {
+    return "Certificado invalido: o conteudo de CERT_PFX_BASE64 nao e um arquivo .pfx/.p12 valido (base64 truncado ou arquivo errado).";
+  }
+  if (/mac verify failure|incorrect password|decrypt/i.test(raw)) {
+    return "Senha do certificado incorreta (CERT_PASSWORD).";
+  }
+  return `Falha ao carregar o certificado: ${raw}`;
+}
+
+/** Valida o PFX na inicializacao para falhar cedo, com mensagem clara. */
+let certStatus = { loaded: false, message: "" };
+try {
+  tls.createSecureContext({ pfx, passphrase: CERT_PASSWORD });
+  certStatus = { loaded: true, message: "Certificado carregado com sucesso." };
+} catch (error) {
+  certStatus = { loaded: false, message: describeCertError(error) };
+  console.error("[bridge]", certStatus.message);
+}
 
 const agent = new https.Agent({
   pfx,
@@ -142,7 +165,13 @@ app.use((req, res, next) => {
   return next();
 });
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/health", (_req, res) =>
+  res.json({
+    ok: certStatus.loaded,
+    certLoaded: certStatus.loaded,
+    message: certStatus.message,
+  }),
+);
 
 app.post("/distribuicao", async (req, res) => {
   const { cnpj, uf, ambiente = "homologacao", ultNSU = 0 } = req.body ?? {};
@@ -173,7 +202,11 @@ app.post("/distribuicao", async (req, res) => {
     });
   } catch (error) {
     console.error("[bridge] falha na distribuicao:", error);
-    return res.status(502).json({ error: error instanceof Error ? error.message : "Falha na SEFAZ" });
+    const raw = error instanceof Error ? error.message : "Falha na SEFAZ";
+    const friendly = /too long|mac verify failure|header too long|wrong tag/i.test(raw)
+      ? describeCertError(error)
+      : raw;
+    return res.status(502).json({ error: friendly });
   }
 });
 
