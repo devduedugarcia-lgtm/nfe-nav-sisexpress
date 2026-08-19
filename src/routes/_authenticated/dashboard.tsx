@@ -707,6 +707,11 @@ function DashboardPage() {
                   </TableCell>
                   <TableCell className="py-4">
                     <DocTypeBadge type={row.doc_type} />
+                    {row.source === "demo" && (
+                      <span className="ml-2 rounded border border-border px-1.5 py-0.5 text-[10px] tracking-wide text-muted-foreground uppercase">
+                        demo
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="py-4">
                     <div className="flex flex-wrap items-center gap-2">
