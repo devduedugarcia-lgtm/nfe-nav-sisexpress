@@ -75,6 +75,7 @@ import {
   saveSefazAccount,
   searchSefazDemo,
   syncSefaz,
+  testSefazBridge,
 } from "@/lib/nfe.functions";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
