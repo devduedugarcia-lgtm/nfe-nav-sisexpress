@@ -347,9 +347,11 @@ export const adminListUsers = createServerFn({ method: "GET" })
     const { data: isAdmin } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
     if (!isAdmin) throw new Error("Acesso restrito a administradores");
 
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
     const [{ data: profiles, error }, { data: roles }] = await Promise.all([
       supabase.from("profiles").select("id, email, full_name, status, created_at").order("created_at", { ascending: false }),
-      supabase.from("user_roles").select("user_id, role"),
+      supabaseAdmin.from("user_roles").select("user_id, role"),
     ]);
     if (error) throw new Error(error.message);
 
