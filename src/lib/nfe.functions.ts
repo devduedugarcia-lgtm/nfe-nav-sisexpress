@@ -54,7 +54,7 @@ export const listInvoices = createServerFn({ method: "POST" })
     return rows ?? [];
   });
 
-export const searchSefaz = createServerFn({ method: "POST" })
+export const searchSefazDemo = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => filterSchema.parse(input))
   .handler(async ({ data, context }) => {
@@ -79,13 +79,131 @@ export const searchSefaz = createServerFn({ method: "POST" })
     const { data: inserted, error } = await supabase
       .from("invoices")
       .upsert(
-        invoices.map((invoice) => ({ ...invoice, user_id: userId })),
+        invoices.map((invoice) => ({ ...invoice, user_id: userId, source: "demo" })),
         { onConflict: "user_id,access_key", ignoreDuplicates: true },
       )
       .select("id");
 
     if (error) throw new Error(error.message);
     return { imported: inserted?.length ?? 0 };
+  });
+
+export const getSefazAccount = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { bridgeConfig } = await import("./sefaz.server");
+    const { data } = await supabase
+      .from("sefaz_accounts")
+      .select("cnpj, uf, environment, ult_nsu, last_sync_at, last_status")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    return { account: data ?? null, bridgeConfigured: bridgeConfig().configured };
+  });
+
+export const saveSefazAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        cnpj: z
+          .string()
+          .transform((value) => value.replace(/\D/g, ""))
+          .refine((value) => value.length === 14, "Informe um CNPJ com 14 dígitos"),
+        uf: z
+          .string()
+          .transform((value) => value.toUpperCase())
+          .refine((value) => /^[A-Z]{2}$/.test(value), "UF inválida"),
+        environment: z.enum(["producao", "homologacao"]),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase.from("sefaz_accounts").upsert(
+      {
+        user_id: userId,
+        cnpj: data.cnpj,
+        uf: data.uf,
+        environment: data.environment,
+      },
+      { onConflict: "user_id" },
+    );
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const resetSefazCursor = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("sefaz_accounts")
+      .update({ ult_nsu: 0, last_status: null })
+      .eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const syncSefaz = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { callBridge, parseSefazDocument, describeSefazStatus } = await import("./sefaz.server");
+
+    const { data: account } = await supabase
+      .from("sefaz_accounts")
+      .select("cnpj, uf, environment, ult_nsu")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!account) {
+      throw new Error("Cadastre o CNPJ e a UF na configuração fiscal antes de sincronizar.");
+    }
+
+    const result = await callBridge({
+      cnpj: account.cnpj,
+      uf: account.uf,
+      ambiente: account.environment,
+      ultNSU: Number(account.ult_nsu ?? 0),
+    });
+
+    const status = describeSefazStatus(result);
+    const parsed = result.docs
+      .map((doc) => parseSefazDocument(doc, account.cnpj))
+      .filter((invoice): invoice is NonNullable<typeof invoice> => invoice !== null);
+
+    let imported = 0;
+    if (parsed.length > 0) {
+      const { data: inserted, error } = await supabase
+        .from("invoices")
+        .upsert(
+          parsed.map((invoice) => ({ ...invoice, user_id: userId })),
+          { onConflict: "user_id,access_key", ignoreDuplicates: true },
+        )
+        .select("id");
+      if (error) throw new Error(error.message);
+      imported = inserted?.length ?? 0;
+    }
+
+    const nextNsu = Math.max(Number(account.ult_nsu ?? 0), result.ultNSU || 0);
+    await supabase
+      .from("sefaz_accounts")
+      .update({
+        ult_nsu: nextNsu,
+        last_sync_at: new Date().toISOString(),
+        last_status: status,
+      })
+      .eq("user_id", userId);
+
+    return {
+      imported,
+      status,
+      ultNSU: nextNsu,
+      maxNSU: result.maxNSU || nextNsu,
+      pending: Math.max((result.maxNSU || nextNsu) - nextNsu, 0),
+    };
   });
 
 export const getInvoiceXml = createServerFn({ method: "POST" })
