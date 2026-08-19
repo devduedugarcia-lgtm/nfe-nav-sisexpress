@@ -75,6 +75,7 @@ import {
   saveSefazAccount,
   searchSefazDemo,
   syncSefaz,
+  testSefazBridge,
 } from "@/lib/nfe.functions";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -111,6 +112,7 @@ type Invoice = {
   total_amount: number;
   status: string;
   xml_content: string;
+  source?: string | null;
 };
 
 function toInputDate(date: Date) {
@@ -146,6 +148,7 @@ function DashboardPage() {
   const loadSefazAccount = useServerFn(getSefazAccount);
   const persistSefazAccount = useServerFn(saveSefazAccount);
   const resetCursor = useServerFn(resetSefazCursor);
+  const runBridgeTest = useServerFn(testSefazBridge);
   const fetchXml = useServerFn(getInvoiceXml);
   const exportZip = useServerFn(exportInvoicesZip);
   const wipeInvoices = useServerFn(clearInvoices);
@@ -237,6 +240,18 @@ function DashboardPage() {
     onSuccess: () => {
       toast.success("Contador NSU reiniciado: a próxima sincronização busca desde o início");
       queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const bridgeTest = useMutation({
+    mutationFn: () => runBridgeTest(),
+    onSuccess: (result) => {
+      const cert = result.certificate?.validUntil
+        ? ` · certificado válido até ${result.certificate.validUntil}`
+        : "";
+      if (result.ok) toast.success(`${result.message}${cert}`);
+      else toast.error(result.message);
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -492,6 +507,15 @@ function DashboardPage() {
                 )}
               </div>
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => bridgeTest.mutate()}
+                  disabled={bridgeTest.isPending}
+                >
+                  {bridgeTest.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+                  Testar conexão
+                </Button>
                 <Dialog open={configOpen} onOpenChange={setConfigOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm" onClick={openConfig}>
@@ -683,6 +707,11 @@ function DashboardPage() {
                   </TableCell>
                   <TableCell className="py-4">
                     <DocTypeBadge type={row.doc_type} />
+                    {row.source === "demo" && (
+                      <span className="ml-2 rounded border border-border px-1.5 py-0.5 text-[10px] tracking-wide text-muted-foreground uppercase">
+                        demo
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="py-4">
                     <div className="flex flex-wrap items-center gap-2">

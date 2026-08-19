@@ -35,6 +35,63 @@ export function bridgeConfig() {
   return { url: url ?? null, token: token ?? null, configured: Boolean(url && token) };
 }
 
+export type BridgeHealth = {
+  ok: boolean;
+  message: string;
+  certificate?: { subject?: string | null; validUntil?: string | null } | null;
+};
+
+/** Consulta o `/health` do serviço publicado e devolve um resumo seguro. */
+export async function checkBridgeHealth(): Promise<BridgeHealth> {
+  const { url, token, configured } = bridgeConfig();
+  if (!configured) {
+    return { ok: false, message: "Serviço de consulta ainda não cadastrado (URL e token)." };
+  }
+
+  try {
+    const response = await fetch(`${url!.replace(/\/$/, "")}/health`, {
+      headers: { Authorization: `Bearer ${token!}` },
+    });
+    const text = await response.text();
+
+    if (!response.ok) {
+      return { ok: false, message: `O serviço respondeu ${response.status}. Verifique URL e token.` };
+    }
+
+    let payload: {
+      ok?: boolean;
+      certificate?: { subject?: string | null; validUntil?: string | null } | null;
+      certLoaded?: boolean;
+      certValidUntil?: string | null;
+    } = {};
+    try {
+      payload = JSON.parse(text) as typeof payload;
+    } catch {
+      return { ok: false, message: "O serviço respondeu em formato inesperado." };
+    }
+
+    const certificate =
+      payload.certificate ??
+      (payload.certLoaded === undefined
+        ? null
+        : { subject: null, validUntil: payload.certValidUntil ?? null });
+
+    return {
+      ok: payload.ok !== false,
+      message: "Serviço acessível e token aceito.",
+      certificate,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof Error && error.message
+          ? `Não foi possível alcançar o serviço: ${error.message}`
+          : "Não foi possível alcançar o serviço.",
+    };
+  }
+}
+
 export async function callBridge(input: {
   cnpj: string;
   uf: string;
