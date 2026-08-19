@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { FileStack, LogOut } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 
 type Props = { isAdmin?: boolean | undefined; email?: string | null | undefined };
@@ -47,6 +48,7 @@ export function AppHeader({ isAdmin = false, email }: Props) {
 
         <div className="ml-auto flex items-center gap-3">
           {email && <span className="hidden text-xs text-muted-foreground sm:inline">{email}</span>}
+          <ThemeToggle />
           <Button variant="outline" size="sm" onClick={handleSignOut}>
             <LogOut className="mr-1.5 size-4" />
             Sair

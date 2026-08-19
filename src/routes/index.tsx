@@ -8,6 +8,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/integrations/supabase/client";
 import { getSession } from "@/lib/nfe.functions";
 
@@ -132,7 +133,10 @@ function AuthPage() {
   }
 
   return (
-    <main className="grid min-h-screen lg:grid-cols-2">
+    <main className="relative grid min-h-screen lg:grid-cols-2">
+      <div className="absolute right-4 top-4 z-10">
+        <ThemeToggle />
+      </div>
       <section className="hidden flex-col justify-between bg-primary p-10 text-primary-foreground lg:flex">
         <div className="flex items-center gap-2">
           <span className="flex size-9 items-center justify-center rounded-md bg-accent text-accent-foreground">
