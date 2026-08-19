@@ -48,10 +48,13 @@ export type Database = {
           issued_at: string
           issuer_cnpj: string
           issuer_name: string
+          nsu: number | null
           number: string
           recipient_cnpj: string | null
           recipient_name: string
+          schema_type: string | null
           series: string
+          source: string
           status: string
           total_amount: number
           user_id: string
@@ -66,10 +69,13 @@ export type Database = {
           issued_at: string
           issuer_cnpj: string
           issuer_name: string
+          nsu?: number | null
           number: string
           recipient_cnpj?: string | null
           recipient_name: string
+          schema_type?: string | null
           series: string
+          source?: string
           status?: string
           total_amount?: number
           user_id: string
@@ -84,10 +90,13 @@ export type Database = {
           issued_at?: string
           issuer_cnpj?: string
           issuer_name?: string
+          nsu?: number | null
           number?: string
           recipient_cnpj?: string | null
           recipient_name?: string
+          schema_type?: string | null
           series?: string
+          source?: string
           status?: string
           total_amount?: number
           user_id?: string
@@ -119,6 +128,42 @@ export type Database = {
           id?: string
           status?: Database["public"]["Enums"]["account_status"]
           updated_at?: string
+        }
+        Relationships: []
+      }
+      sefaz_accounts: {
+        Row: {
+          cnpj: string
+          created_at: string
+          environment: string
+          last_status: string | null
+          last_sync_at: string | null
+          uf: string
+          ult_nsu: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cnpj: string
+          created_at?: string
+          environment?: string
+          last_status?: string | null
+          last_sync_at?: string | null
+          uf?: string
+          ult_nsu?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cnpj?: string
+          created_at?: string
+          environment?: string
+          last_status?: string | null
+          last_sync_at?: string | null
+          uf?: string
+          ult_nsu?: number
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
