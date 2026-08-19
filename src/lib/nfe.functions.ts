@@ -146,6 +146,13 @@ export const resetSefazCursor = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const testSefazBridge = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const { checkBridgeHealth } = await import("./sefaz.server");
+    return checkBridgeHealth();
+  });
+
 export const syncSefaz = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -162,40 +169,53 @@ export const syncSefaz = createServerFn({ method: "POST" })
       throw new Error("Cadastre o CNPJ e a UF na configuração fiscal antes de sincronizar.");
     }
 
-    const result = await callBridge({
-      cnpj: account.cnpj,
-      uf: account.uf,
-      ambiente: account.environment,
-      ultNSU: Number(account.ult_nsu ?? 0),
-    });
-
-    const status = describeSefazStatus(result);
-    const parsed = result.docs
-      .map((doc) => parseSefazDocument(doc, account.cnpj))
-      .filter((invoice): invoice is NonNullable<typeof invoice> => invoice !== null);
-
+    const MAX_PAGES = 5;
+    let cursor = Number(account.ult_nsu ?? 0);
+    let maxNSU = cursor;
     let imported = 0;
-    if (parsed.length > 0) {
-      const { data: inserted, error } = await supabase
-        .from("invoices")
-        .upsert(
-          parsed.map((invoice) => ({ ...invoice, user_id: userId })),
-          { onConflict: "user_id,access_key", ignoreDuplicates: true },
-        )
-        .select("id");
-      if (error) throw new Error(error.message);
-      imported = inserted?.length ?? 0;
+    let status = "Sem retorno da SEFAZ";
+
+    for (let page = 0; page < MAX_PAGES; page += 1) {
+      const result = await callBridge({
+        cnpj: account.cnpj,
+        uf: account.uf,
+        ambiente: account.environment,
+        ultNSU: cursor,
+      });
+
+      status = describeSefazStatus(result);
+      maxNSU = Math.max(maxNSU, result.maxNSU || 0);
+
+      const parsed = result.docs
+        .map((doc) => parseSefazDocument(doc, account.cnpj))
+        .filter((invoice): invoice is NonNullable<typeof invoice> => invoice !== null);
+
+      if (parsed.length > 0) {
+        const { data: inserted, error } = await supabase
+          .from("invoices")
+          .upsert(
+            parsed.map((invoice) => ({ ...invoice, user_id: userId })),
+            { onConflict: "user_id,access_key", ignoreDuplicates: true },
+          )
+          .select("id");
+        if (error) throw new Error(error.message);
+        imported += inserted?.length ?? 0;
+      }
+
+      const nextCursor = Math.max(cursor, result.ultNSU || 0);
+      const advanced = nextCursor > cursor;
+      cursor = nextCursor;
+
+      // Grava o cursor a cada página para não reprocessar em caso de falha adiante.
+      await supabase
+        .from("sefaz_accounts")
+        .update({ ult_nsu: cursor, last_sync_at: new Date().toISOString(), last_status: status })
+        .eq("user_id", userId);
+
+      if (!advanced || result.docs.length === 0 || cursor >= maxNSU) break;
     }
 
-    const nextNsu = Math.max(Number(account.ult_nsu ?? 0), result.ultNSU || 0);
-    await supabase
-      .from("sefaz_accounts")
-      .update({
-        ult_nsu: nextNsu,
-        last_sync_at: new Date().toISOString(),
-        last_status: status,
-      })
-      .eq("user_id", userId);
+    const nextNsu = cursor;
 
     return {
       imported,
