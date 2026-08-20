@@ -4,7 +4,10 @@
 async function cryptoKey(): Promise<CryptoKey> {
   const raw = process.env["CERT_ENCRYPTION_KEY"];
   if (!raw) throw new Error("Cofre de certificados não configurado (CERT_ENCRYPTION_KEY).");
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(raw) as unknown as BufferSource,
+  );
   return crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
