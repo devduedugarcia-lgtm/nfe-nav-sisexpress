@@ -298,10 +298,20 @@ export const getCertificate = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
     const { data } = await supabase
       .from("certificates")
-      .select("file_name, valid_until, uploaded_at")
+      .select(
+        "file_name, valid_until, valid_from, uploaded_at, subject_name, holder_cnpj, thumbprint, status",
+      )
       .eq("user_id", userId)
       .maybeSingle();
-    return data ?? null;
+
+    if (!data) return null;
+
+    const expired = new Date(`${data.valid_until}T23:59:59`) < new Date();
+    const daysLeft = Math.ceil(
+      (new Date(`${data.valid_until}T23:59:59`).getTime() - Date.now()) / 86_400_000,
+    );
+
+    return { ...data, expired, daysLeft };
   });
 
 export const uploadCertificate = createServerFn({ method: "POST" })
@@ -316,28 +326,61 @@ export const uploadCertificate = createServerFn({ method: "POST" })
           .max(160)
           .refine((value) => /\.(pfx|p12)$/i.test(value), "O arquivo deve ser .pfx ou .p12"),
         password: z.string().min(4).max(120),
+        fileBase64: z
+          .string()
+          .min(100, "Arquivo vazio ou inválido")
+          .max(4_000_000, "Arquivo muito grande para um certificado A1"),
       })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    // Simulated upload: the certificate binary/password are never stored.
-    void data.password;
-    const validUntil = new Date();
-    validUntil.setFullYear(validUntil.getFullYear() + 1);
+    const { validateCertificateOnBridge } = await import("./sefaz.server");
+    const { encryptSecret, sha256Base64 } = await import("./crypto.server");
+
+    const pfxBase64 = data.fileBase64.replace(/\s+/g, "");
+    const info = await validateCertificateOnBridge({ pfxBase64, certPassword: data.password });
+
+    const validUntil = info.validUntil ? info.validUntil.slice(0, 10) : null;
+    if (!validUntil) {
+      throw new Error("Não foi possível ler a validade do certificado.");
+    }
+    const expired = new Date(`${validUntil}T23:59:59`) < new Date();
 
     const { error } = await supabase.from("certificates").upsert(
       {
         user_id: userId,
         file_name: data.fileName,
-        valid_until: validUntil.toISOString().slice(0, 10),
+        valid_until: validUntil,
+        valid_from: info.validFrom ? info.validFrom.slice(0, 10) : null,
         uploaded_at: new Date().toISOString(),
+        subject_name: info.subject,
+        holder_cnpj: info.cnpj,
+        thumbprint: info.thumbprint ?? (await sha256Base64(pfxBase64)),
+        status: expired ? "expirado" : "valido",
+        pfx_ciphertext: await encryptSecret(pfxBase64),
+        password_ciphertext: await encryptSecret(data.password),
       },
       { onConflict: "user_id" },
     );
 
     if (error) throw new Error(error.message);
-    return { fileName: data.fileName, validUntil: validUntil.toISOString().slice(0, 10) };
+    return {
+      fileName: data.fileName,
+      validUntil,
+      subject: info.subject,
+      cnpj: info.cnpj,
+      expired,
+    };
+  });
+
+export const deleteCertificate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase.from("certificates").delete().eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
 
 export const adminListUsers = createServerFn({ method: "GET" })
