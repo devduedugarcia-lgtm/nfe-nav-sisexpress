@@ -158,6 +158,7 @@ export const syncSefaz = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const { callBridge, parseSefazDocument, describeSefazStatus } = await import("./sefaz.server");
+    const { decryptSecret } = await import("./crypto.server");
 
     const { data: account } = await supabase
       .from("sefaz_accounts")
@@ -168,6 +169,27 @@ export const syncSefaz = createServerFn({ method: "POST" })
     if (!account) {
       throw new Error("Cadastre o CNPJ e a UF na configuração fiscal antes de sincronizar.");
     }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: cert } = await supabaseAdmin
+      .from("certificates")
+      .select("pfx_ciphertext, password_ciphertext, valid_until, holder_cnpj")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!cert?.pfx_ciphertext || !cert.password_ciphertext) {
+      throw new Error(
+        "Envie seu certificado digital (.pfx ou .p12) na tela Certificado antes de consultar o SEFAZ.",
+      );
+    }
+    if (new Date(`${cert.valid_until}T23:59:59`) < new Date()) {
+      throw new Error(
+        `Certificado digital vencido em ${cert.valid_until}. Envie um certificado válido para consultar o SEFAZ.`,
+      );
+    }
+
+    const pfxBase64 = await decryptSecret(cert.pfx_ciphertext);
+    const certPassword = await decryptSecret(cert.password_ciphertext);
 
     const MAX_PAGES = 5;
     let cursor = Number(account.ult_nsu ?? 0);
@@ -181,6 +203,8 @@ export const syncSefaz = createServerFn({ method: "POST" })
         uf: account.uf,
         ambiente: account.environment,
         ultNSU: cursor,
+        pfxBase64,
+        certPassword,
       });
 
       status = describeSefazStatus(result);
