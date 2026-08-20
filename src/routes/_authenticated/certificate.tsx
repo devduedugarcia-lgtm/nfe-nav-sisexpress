@@ -160,17 +160,50 @@ function CertificatePage() {
               <p className="mt-3 text-sm text-muted-foreground">Carregando…</p>
             ) : certificate.data ? (
               <div className="mt-3 space-y-2 text-sm">
-                <p className="flex items-center gap-2 font-medium text-foreground">
-                  <BadgeCheck className="size-4 text-success" />
-                  Certificado ativo
-                </p>
+                {certificate.data.expired ? (
+                  <p className="flex items-center gap-2 font-medium text-destructive">
+                    <AlertTriangle className="size-4" />
+                    Certificado vencido
+                  </p>
+                ) : (
+                  <p className="flex items-center gap-2 font-medium text-foreground">
+                    <BadgeCheck className="size-4 text-success" />
+                    Certificado ativo
+                  </p>
+                )}
                 <p className="text-muted-foreground">Arquivo: {certificate.data.file_name}</p>
+                {certificate.data.subject_name && (
+                  <p className="text-muted-foreground">Titular: {certificate.data.subject_name}</p>
+                )}
+                {certificate.data.holder_cnpj && (
+                  <p className="text-muted-foreground">CNPJ: {certificate.data.holder_cnpj}</p>
+                )}
                 <p className="text-muted-foreground">
                   Válido até: {formatDate(certificate.data.valid_until)}
+                  {!certificate.data.expired && certificate.data.daysLeft <= 30 && (
+                    <span className="ml-1 text-warning">
+                      (faltam {certificate.data.daysLeft} dias)
+                    </span>
+                  )}
                 </p>
                 <p className="text-muted-foreground">
                   Enviado em: {formatDateTime(certificate.data.uploaded_at)}
                 </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  disabled={remove.isPending}
+                  onClick={() => remove.mutate()}
+                >
+                  {remove.isPending ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="mr-2 size-4" />
+                  )}
+                  Remover certificado
+                </Button>
               </div>
             ) : (
               <p className="mt-3 text-sm text-muted-foreground">
