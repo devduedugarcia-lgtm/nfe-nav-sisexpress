@@ -41,6 +41,54 @@ export type BridgeHealth = {
   certificate?: { subject?: string | null; validUntil?: string | null } | null;
 };
 
+export type CertificateInfo = {
+  subject: string | null;
+  cnpj: string | null;
+  validFrom: string | null;
+  validUntil: string | null;
+  thumbprint: string | null;
+};
+
+/**
+ * Valida o par arquivo + senha no serviço (que tem Node/OpenSSL) e devolve os
+ * dados do titular. O serviço não grava nada: apenas lê e responde.
+ */
+export async function validateCertificateOnBridge(input: {
+  pfxBase64: string;
+  certPassword: string;
+}): Promise<CertificateInfo> {
+  const { url, token, configured } = bridgeConfig();
+  if (!configured) {
+    throw new Error(
+      "Serviço de consulta não configurado. Cadastre a URL e o token antes de enviar o certificado.",
+    );
+  }
+
+  const response = await fetch(`${url!.replace(/\/$/, "")}/validar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token!}` },
+    body: JSON.stringify(input),
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    let message = `O serviço respondeu ${response.status}`;
+    try {
+      const parsed = JSON.parse(text) as { error?: string };
+      if (parsed.error) message = parsed.error;
+    } catch {
+      /* mantém a mensagem genérica */
+    }
+    if (response.status === 404) {
+      message =
+        "O serviço publicado ainda não tem o endpoint de validação. Atualize o serviço (pasta sefaz-bridge) e tente novamente.";
+    }
+    throw new Error(message);
+  }
+
+  return JSON.parse(text) as CertificateInfo;
+}
+
 /** Consulta o `/health` do serviço publicado e devolve um resumo seguro. */
 export async function checkBridgeHealth(): Promise<BridgeHealth> {
   const { url, token, configured } = bridgeConfig();
@@ -108,6 +156,8 @@ export async function callBridge(input: {
   uf: string;
   ambiente: string;
   ultNSU: number;
+  pfxBase64?: string;
+  certPassword?: string;
 }): Promise<BridgeResponse> {
   const { url, token, configured } = bridgeConfig();
   if (!configured) {
