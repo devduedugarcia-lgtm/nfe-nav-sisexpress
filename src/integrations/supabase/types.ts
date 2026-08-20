@@ -17,23 +17,44 @@ export type Database = {
       certificates: {
         Row: {
           file_name: string
+          holder_cnpj: string | null
           id: string
+          password_ciphertext: string | null
+          pfx_ciphertext: string | null
+          status: string
+          subject_name: string | null
+          thumbprint: string | null
           uploaded_at: string
           user_id: string
+          valid_from: string | null
           valid_until: string
         }
         Insert: {
           file_name: string
+          holder_cnpj?: string | null
           id?: string
+          password_ciphertext?: string | null
+          pfx_ciphertext?: string | null
+          status?: string
+          subject_name?: string | null
+          thumbprint?: string | null
           uploaded_at?: string
           user_id: string
+          valid_from?: string | null
           valid_until: string
         }
         Update: {
           file_name?: string
+          holder_cnpj?: string | null
           id?: string
+          password_ciphertext?: string | null
+          pfx_ciphertext?: string | null
+          status?: string
+          subject_name?: string | null
+          thumbprint?: string | null
           uploaded_at?: string
           user_id?: string
+          valid_from?: string | null
           valid_until?: string
         }
         Relationships: []
