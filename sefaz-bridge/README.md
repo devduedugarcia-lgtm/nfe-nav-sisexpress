@@ -5,40 +5,38 @@ certificado digital A1 da empresa. O backend do app (runtime edge) não faz TLS
 mútuo, então este serviço fica entre os dois:
 
 ```text
-app (Lovable) --HTTPS + token--> ponte (Node.js) --SOAP + mTLS--> SEFAZ
+app (Lovable) --HTTPS + token + certificado cifrado--> ponte (Node.js) --SOAP + mTLS--> SEFAZ
 ```
 
-O certificado nunca sai daqui.
+## Como funciona (modo dinâmico, padrão)
+
+Cada usuário envia o próprio certificado pela tela do app. O app guarda o
+arquivo e a senha **cifrados** no banco e, a cada sincronização, envia o
+certificado para este serviço **somente naquela chamada**. O serviço monta a
+conexão mTLS em memória, consulta a SEFAZ e descarta tudo — nada é gravado em
+disco. Um mesmo serviço atende quantas empresas forem necessárias, sem nenhuma
+configuração manual por certificado.
 
 ## Variáveis de ambiente
 
 | Variável | Obrigatória | Descrição |
 | --- | --- | --- |
 | `BRIDGE_TOKEN` | sim | Token compartilhado com o app (use uma string longa e aleatória) |
-| `CERT_PASSWORD` | sim | Senha do certificado A1 |
-| `CERT_PFX_BASE64` | sim* | Conteúdo do `.pfx`/`.p12` em base64 (recomendado em PaaS) |
-| `CERT_PFX_PATH` | sim* | Caminho do arquivo `.pfx` no disco (alternativa ao base64) |
 | `PORT` | não | Porta HTTP (padrão `8787`) |
+| `CERT_PFX_BASE64` | não | Certificado de teste em base64 (fallback para chamadas sem certificado) |
+| `CERT_PFX_PATH` | não | Caminho de um `.pfx` de teste (alternativa ao base64) |
+| `CERT_PASSWORD` | não | Senha do certificado de teste |
 | `NODE_EXTRA_CA_CERTS` | não | CA extra, se a SEFAZ do seu estado exigir |
 
-\* informe **um** dos dois.
-
-Gerar o base64 do certificado:
-
-```bash
-base64 -w0 certificado.pfx    # Linux
-base64 -i certificado.pfx     # macOS
-```
+Em produção, **basta o `BRIDGE_TOKEN`**. As variáveis de certificado servem só
+para testar o serviço isoladamente (`curl`) e podem ser removidas depois.
 
 ## Rodar localmente
 
 ```bash
 cd sefaz-bridge
 npm install
-BRIDGE_TOKEN=troque-isto \
-CERT_PASSWORD=senha-do-certificado \
-CERT_PFX_PATH=./certificado.pfx \
-npm start
+BRIDGE_TOKEN=troque-isto npm start
 ```
 
 Teste: `curl http://localhost:8787/health`
@@ -48,26 +46,58 @@ Teste: `curl http://localhost:8787/health`
 **Render / Railway**
 1. Novo Web Service apontando para este repositório, diretório raiz `sefaz-bridge`.
 2. Build: `npm install` · Start: `npm start`.
-3. Cadastre as variáveis de ambiente acima (use `CERT_PFX_BASE64`).
+3. Cadastre apenas `BRIDGE_TOKEN` (e, se quiser testar via curl, as variáveis
+   de certificado de teste).
 
 **Fly.io**
 ```bash
 cd sefaz-bridge
 fly launch --no-deploy
-fly secrets set BRIDGE_TOKEN=... CERT_PASSWORD=... CERT_PFX_BASE64="$(base64 -w0 certificado.pfx)"
+fly secrets set BRIDGE_TOKEN=...
 fly deploy
 ```
 
 **VPS (systemd)**: `node server.mjs` atrás de Nginx com HTTPS; o app só aceita
 URL `https://`.
 
-## Endpoint
+## Endpoints
 
-`POST /distribuicao` — cabeçalho `Authorization: Bearer <BRIDGE_TOKEN>`
+### `POST /validar` — cabeçalho `Authorization: Bearer <BRIDGE_TOKEN>`
+
+Valida o par arquivo + senha e devolve os dados do titular (sem gravar nada).
+Usado pelo app no momento do envio do certificado.
 
 ```json
-{ "cnpj": "11222333000181", "uf": "SP", "ambiente": "homologacao", "ultNSU": 0 }
+{ "pfxBase64": "MII...", "certPassword": "senha" }
 ```
+
+Resposta:
+
+```json
+{
+  "subject": "CN=EMPRESA LTDA:11222333000181, ...",
+  "cnpj": "11222333000181",
+  "validFrom": "2025-01-10T12:00:00.000Z",
+  "validUntil": "2026-01-10T12:00:00.000Z",
+  "thumbprint": "ab12cd..."
+}
+```
+
+### `POST /distribuicao` — cabeçalho `Authorization: Bearer <BRIDGE_TOKEN>`
+
+```json
+{
+  "cnpj": "11222333000181",
+  "uf": "SP",
+  "ambiente": "homologacao",
+  "ultNSU": 0,
+  "pfxBase64": "MII...",
+  "certPassword": "senha"
+}
+```
+
+`pfxBase64`/`certPassword` são opcionais apenas quando existe um certificado
+de teste configurado no ambiente.
 
 Resposta:
 
