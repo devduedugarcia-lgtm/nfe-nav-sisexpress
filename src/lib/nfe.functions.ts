@@ -358,9 +358,10 @@ export const uploadCertificate = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { supabase, userId } = context;
+    const { userId } = context;
     const { validateCertificateOnBridge } = await import("./sefaz.server");
     const { encryptSecret, sha256Base64 } = await import("./crypto.server");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const pfxBase64 = data.fileBase64.replace(/\s+/g, "");
     const info = await validateCertificateOnBridge({ pfxBase64, certPassword: data.password });
@@ -371,7 +372,9 @@ export const uploadCertificate = createServerFn({ method: "POST" })
     }
     const expired = new Date(`${validUntil}T23:59:59`) < new Date();
 
-    const { error } = await supabase.from("certificates").upsert(
+    // Colunas cifradas são revogadas para o papel do app; a gravação usa o cliente
+    // administrativo no servidor, sempre restrita à linha do usuário autenticado.
+    const { error } = await supabaseAdmin.from("certificates").upsert(
       {
         user_id: userId,
         file_name: data.fileName,
