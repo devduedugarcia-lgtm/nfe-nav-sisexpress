@@ -225,7 +225,13 @@ function DashboardPage() {
       } else {
         toast.info(result.status);
       }
-      if (result.pending > 0) {
+      if (result.blockedUntil) {
+        const libera = new Date(result.blockedUntil).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        toast.info(`Próxima consulta ao SEFAZ liberada às ${libera}.`);
+      } else if (result.pending > 0) {
         toast.info(`Ainda há ${result.pending} documento(s) na fila. Sincronize novamente.`);
       }
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
