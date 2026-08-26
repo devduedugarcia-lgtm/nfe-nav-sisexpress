@@ -515,6 +515,18 @@ function DashboardPage() {
                     {account.last_status ? ` · ${account.last_status}` : ""}
                   </p>
                 )}
+                {isBlocked && (
+                  <p>
+                    A SEFAZ exige intervalo entre consultas (erro 656 de consumo indevido). Nova
+                    consulta liberada às {blockedLabel}.
+                  </p>
+                )}
+                {account && (
+                  <p>
+                    Exibindo apenas notas do ambiente{" "}
+                    {environment === "producao" ? "de Produção" : "de Homologação"}.
+                  </p>
+                )}
                 {!bridgeConfigured && (
                   <p>
                     Serviço de consulta ao SEFAZ ainda não conectado. Publique o serviço da pasta{" "}
