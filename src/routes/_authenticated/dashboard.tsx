@@ -220,10 +220,13 @@ function DashboardPage() {
   const sync = useMutation({
     mutationFn: () => runSefazSync(),
     onSuccess: (result) => {
+      const resumo = `${result.received} documento(s) recebido(s) · ${result.imported} gravado(s)${
+        result.skipped > 0 ? ` · ${result.skipped} não interpretado(s)` : ""
+      }`;
       if (result.imported > 0) {
-        toast.success(`${result.imported} nota(s) importada(s) do SEFAZ · ${result.status}`);
+        toast.success(`${resumo} · ${result.status}`);
       } else {
-        toast.info(result.status);
+        toast.info(`${result.status}${result.received > 0 ? ` · ${resumo}` : ""}`);
       }
       if (result.blockedUntil) {
         const libera = new Date(result.blockedUntil).toLocaleTimeString("pt-BR", {
