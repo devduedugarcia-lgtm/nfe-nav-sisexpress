@@ -170,16 +170,6 @@ function DashboardPage() {
     navigate({ to: "/pending-approval", replace: true });
   }
 
-  const filters = useMemo(
-    () => ({ ...range, docType, direction, search: appliedSearch }),
-    [range, docType, direction, appliedSearch],
-  );
-
-  const invoices = useQuery({
-    queryKey: ["invoices", filters],
-    queryFn: () => fetchInvoices({ data: filters }) as Promise<Invoice[]>,
-  });
-
   const sefazAccount = useQuery({
     queryKey: ["sefaz-account"],
     queryFn: () => loadSefazAccount(),
@@ -187,6 +177,32 @@ function DashboardPage() {
 
   const account = sefazAccount.data?.account ?? null;
   const bridgeConfigured = sefazAccount.data?.bridgeConfigured ?? false;
+  const environment = (account?.environment ?? "homologacao") as "producao" | "homologacao";
+
+  // No modo SEFAZ real a tela mostra apenas as notas do ambiente configurado,
+  // sem misturar demonstração nem dados de homologação em produção.
+  const filters = useMemo(
+    () => ({
+      ...range,
+      docType,
+      direction,
+      search: appliedSearch,
+      source: mode === "demo" ? ("demo" as const) : ("sefaz" as const),
+      environment: mode === "demo" ? ("all" as const) : environment,
+    }),
+    [range, docType, direction, appliedSearch, mode, environment],
+  );
+
+  const invoices = useQuery({
+    queryKey: ["invoices", filters],
+    queryFn: () => fetchInvoices({ data: filters }) as Promise<Invoice[]>,
+  });
+
+  const blockedUntil = account?.blocked_until ? new Date(account.blocked_until) : null;
+  const isBlocked = Boolean(blockedUntil && blockedUntil.getTime() > Date.now());
+  const blockedLabel = blockedUntil
+    ? blockedUntil.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : null;
 
   const search = useMutation({
     mutationFn: () => runDemoSearch({ data: filters }),
