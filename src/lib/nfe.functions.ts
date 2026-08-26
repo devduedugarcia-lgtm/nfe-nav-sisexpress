@@ -160,6 +160,18 @@ export const resetSefazCursor = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const clearSefazBlock = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("sefaz_accounts")
+      .update({ blocked_until: null })
+      .eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const testSefazBridge = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async () => {
