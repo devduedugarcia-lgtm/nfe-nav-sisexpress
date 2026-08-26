@@ -219,10 +219,12 @@ export const syncSefaz = createServerFn({ method: "POST" })
     const certPassword = await decryptSecret(cert.password_ciphertext);
 
     const MAX_PAGES = 5;
+    const ONE_HOUR = 60 * 60 * 1000;
     let cursor = Number(account.ult_nsu ?? 0);
     let maxNSU = cursor;
     let imported = 0;
     let status = "Sem retorno da SEFAZ";
+    let blockedUntil: string | null = null;
 
     for (let page = 0; page < MAX_PAGES; page += 1) {
       const result = await callBridge({
@@ -237,6 +239,12 @@ export const syncSefaz = createServerFn({ method: "POST" })
       status = describeSefazStatus(result);
       maxNSU = Math.max(maxNSU, result.maxNSU || 0);
 
+      const code = result.cStat ?? "";
+      // 656 = consumo indevido (bloqueio da SEFAZ); 137 = nada novo (exige 1h de espera).
+      if (code === "656" || code === "137") {
+        blockedUntil = new Date(Date.now() + ONE_HOUR).toISOString();
+      }
+
       const parsed = result.docs
         .map((doc) => parseSefazDocument(doc, account.cnpj))
         .filter((invoice): invoice is NonNullable<typeof invoice> => invoice !== null);
@@ -245,7 +253,11 @@ export const syncSefaz = createServerFn({ method: "POST" })
         const { data: inserted, error } = await supabase
           .from("invoices")
           .upsert(
-            parsed.map((invoice) => ({ ...invoice, user_id: userId })),
+            parsed.map((invoice) => ({
+              ...invoice,
+              user_id: userId,
+              environment: account.environment,
+            })),
             { onConflict: "user_id,access_key", ignoreDuplicates: true },
           )
           .select("id");
@@ -260,10 +272,18 @@ export const syncSefaz = createServerFn({ method: "POST" })
       // Grava o cursor a cada página para não reprocessar em caso de falha adiante.
       await supabase
         .from("sefaz_accounts")
-        .update({ ult_nsu: cursor, last_sync_at: new Date().toISOString(), last_status: status })
+        .update({
+          ult_nsu: cursor,
+          last_sync_at: new Date().toISOString(),
+          last_status: status,
+          blocked_until: blockedUntil,
+        })
         .eq("user_id", userId);
 
-      if (!advanced || result.docs.length === 0 || cursor >= maxNSU) break;
+      // Só continua a paginação quando a SEFAZ devolveu documentos (138) e o NSU avançou.
+      if (blockedUntil || code !== "138" || !advanced || result.docs.length === 0) break;
+      if (cursor >= maxNSU) break;
+      await new Promise((resolve) => setTimeout(resolve, 1200));
     }
 
     const nextNsu = cursor;
@@ -275,6 +295,7 @@ export const syncSefaz = createServerFn({ method: "POST" })
       ultNSU: nextNsu,
       maxNSU: highest,
       pending: Math.max(highest - nextNsu, 0),
+      blockedUntil,
     };
   });
 
