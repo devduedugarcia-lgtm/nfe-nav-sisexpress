@@ -109,7 +109,7 @@ export const getSefazAccount = createServerFn({ method: "GET" })
     const { bridgeConfig } = await import("./sefaz.server");
     const { data } = await supabase
       .from("sefaz_accounts")
-      .select("cnpj, uf, environment, ult_nsu, last_sync_at, last_status")
+      .select("cnpj, uf, environment, ult_nsu, last_sync_at, last_status, blocked_until")
       .eq("user_id", userId)
       .maybeSingle();
 
