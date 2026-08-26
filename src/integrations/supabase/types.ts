@@ -65,6 +65,7 @@ export type Database = {
           created_at: string
           direction: string
           doc_type: string
+          environment: string | null
           id: string
           issued_at: string
           issuer_cnpj: string
@@ -86,6 +87,7 @@ export type Database = {
           created_at?: string
           direction: string
           doc_type: string
+          environment?: string | null
           id?: string
           issued_at: string
           issuer_cnpj: string
@@ -107,6 +109,7 @@ export type Database = {
           created_at?: string
           direction?: string
           doc_type?: string
+          environment?: string | null
           id?: string
           issued_at?: string
           issuer_cnpj?: string
