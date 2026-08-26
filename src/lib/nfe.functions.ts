@@ -9,7 +9,28 @@ const filterSchema = z.object({
   docType: z.enum(["all", "NFe", "NFCe"]).default("all"),
   direction: z.enum(["all", "entrada", "saida"]).default("all"),
   search: z.string().max(120).default(""),
+  source: z.enum(["all", "demo", "sefaz"]).default("all"),
+  environment: z.enum(["all", "producao", "homologacao"]).default("all"),
 });
+
+type InvoiceFilters = z.infer<typeof filterSchema>;
+
+function applyInvoiceFilters<T extends { eq: any; or: any }>(query: T, data: InvoiceFilters): T {
+  let next: any = query;
+  if (data.docType !== "all") next = next.eq("doc_type", data.docType);
+  if (data.direction !== "all") next = next.eq("direction", data.direction);
+  if (data.source !== "all") next = next.eq("source", data.source);
+  if (data.source === "sefaz" && data.environment !== "all") {
+    next = next.eq("environment", data.environment);
+  }
+  if (data.search.trim()) {
+    const term = `%${data.search.trim()}%`;
+    next = next.or(
+      `issuer_name.ilike.${term},recipient_name.ilike.${term},number.ilike.${term},access_key.ilike.${term}`,
+    );
+  }
+  return next as T;
+}
 
 export const getSession = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
