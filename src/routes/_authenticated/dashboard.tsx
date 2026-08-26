@@ -484,14 +484,14 @@ function DashboardPage() {
                 <Button
                   className="w-full"
                   onClick={() => sync.mutate()}
-                  disabled={sync.isPending || !account || !bridgeConfigured}
+                  disabled={sync.isPending || !account || !bridgeConfigured || isBlocked}
                 >
                   {sync.isPending ? (
                     <Loader2 className="mr-2 size-4 animate-spin" />
                   ) : (
                     <CloudDownload className="mr-2 size-4" />
                   )}
-                  Sincronizar com o SEFAZ
+                  {isBlocked ? `Disponível às ${blockedLabel}` : "Sincronizar com o SEFAZ"}
                 </Button>
               )}
             </div>
