@@ -66,6 +66,7 @@ import {
 } from "@/lib/download";
 import {
   clearInvoices,
+  clearSefazBlock,
   exportInvoicesZip,
   getInvoiceXml,
   getSefazAccount,
