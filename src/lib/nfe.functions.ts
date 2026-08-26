@@ -176,13 +176,26 @@ export const syncSefaz = createServerFn({ method: "POST" })
 
     const { data: account } = await supabase
       .from("sefaz_accounts")
-      .select("cnpj, uf, environment, ult_nsu")
+      .select("cnpj, uf, environment, ult_nsu, blocked_until")
       .eq("user_id", userId)
       .maybeSingle();
 
     if (!account) {
       throw new Error("Cadastre o CNPJ e a UF na configuração fiscal antes de sincronizar.");
     }
+
+    // A SEFAZ exige intervalo mínimo entre consultas; ignorar isso gera o erro 656.
+    if (account.blocked_until && new Date(account.blocked_until) > new Date()) {
+      const libera = new Date(account.blocked_until).toLocaleTimeString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      throw new Error(
+        `A SEFAZ exige um intervalo entre consultas. Próxima sincronização liberada às ${libera}.`,
+      );
+    }
+
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: cert } = await supabaseAdmin
