@@ -1,45 +1,58 @@
-# Tratar o bloqueio 656 (consumo indevido) da SEFAZ
+# Voltar a trazer as notas reais e afrouxar o bloqueio de 1h
 
-Boa notícia dentro do erro: o `656` só é devolvido depois que a SEFAZ aceitou o
-certificado e o CNPJ. Ou seja, o mTLS e o caminho app → serviço → SEFAZ estão
-funcionando. O `656` significa que consultamos com frequência acima do permitido
-(a SEFAZ exige ~1 hora de intervalo quando a resposta é "nada novo", e a nossa
-sincronização pagina várias vezes seguidas).
+## O que os dados mostram agora
+
+Consultei o banco antes de propor qualquer coisa:
+
+- Na tabela de notas existem **apenas 12 notas de demonstração**. Não há nenhuma
+  nota com origem SEFAZ gravada.
+- Na configuração fiscal: CNPJ 32080128000107, UF SP, ambiente **produção**,
+  cursor `ult_nsu = 274`, último retorno `656`, bloqueio até **15:40** (SP).
+
+O cursor em 274 é o ponto central: a SEFAZ só devolve documentos com NSU **maior**
+que o cursor. Como o cursor avançou até 274 sem que as notas tenham ficado
+gravadas, os documentos daquele intervalo não voltam mais em novas consultas —
+por isso "não busca nada". O bloqueio de 1h apenas atrasa o teste; ele não é a
+causa da lista vazia.
 
 ## O que muda
 
-**Banco (`sefaz_accounts`)**
-- Nova coluna `blocked_until` (data/hora até quando não podemos consultar).
+**1. Recomeçar do zero e não perder documentos**
+- Zerar o cursor (`ult_nsu = 0`) e o bloqueio para reprocessar o lote inteiro
+  disponível na SEFAZ (janela dos últimos ~3 meses).
+- Passar a gravar as notas **antes** de avançar o cursor: se a gravação ou a
+  leitura do XML falhar, o cursor não avança e nada é perdido.
 
-**Sincronização**
-- Antes de chamar a SEFAZ: se `blocked_until` estiver no futuro, nem chamamos —
-  devolvemos a mensagem com o horário exato em que a consulta libera.
-- Ao receber `656`: grava `blocked_until = agora + 1 hora`, interrompe a paginação
-  e devolve mensagem clara.
-- Ao receber `137` (nada novo): grava uma espera de 1 hora também, que é a regra
-  da SEFAZ e a principal causa de cair em `656`.
-- Paginação passa a continuar **apenas** quando vieram documentos e o NSU avançou
-  (`cStat 138`), com uma pequena pausa entre páginas; qualquer outro código encerra
-  a execução na hora.
+**2. Diagnóstico de documentos que não viram nota**
+- Contar, por página, quantos documentos vieram e quantos foram efetivamente
+  interpretados. Esse resumo aparece na mensagem do painel
+  (ex.: "12 documentos recebidos, 12 gravados" ou "3 não interpretados").
+- Tratar os tipos que hoje podem ser ignorados em silêncio (resumo de NFe,
+  eventos, documentos compactados) sem descartar o avanço correto.
 
-**Painel**
-- Botão "Sincronizar com o SEFAZ" fica desabilitado enquanto houver bloqueio,
-  mostrando "Disponível às HH:MM" e um contador.
-- Linha de status mostra o retorno da SEFAZ em texto amigável (bloqueado / nada
-  novo / documentos importados) em vez do código cru.
-- No modo Demonstração nada muda.
+**3. Bloqueio mais inteligente (sem travar a validação)**
+- `656` continua bloqueando 1h (é exigência da SEFAZ).
+- `137` (nada novo) passa a bloquear **apenas 5 minutos**, não 1h — foi esse
+  excesso que comprometeu o teste.
+- Botão "Liberar consulta agora" ao lado do sincronizar, para você forçar uma
+  tentativa quando o bloqueio for do nosso controle (137), assumindo o risco.
+- Continua havendo pausa entre páginas para não provocar o 656 de novo.
 
-## O que você faz agora
+## Ordem de execução
 
-Espere completar 1 hora desde a última tentativa e clique em sincronizar novamente.
-Depois desta correção o app passa a controlar esse intervalo sozinho, então o `656`
-não deve mais acontecer.
+1. Ajustar a sincronização (gravar antes de avançar cursor, contagem, tempos de
+   bloqueio).
+2. Ajustar o painel (contagem no retorno + botão de liberar consulta).
+3. Zerar cursor e bloqueio.
+4. Rodar uma sincronização real a partir do NSU 0 e te reportar: código da SEFAZ,
+   documentos recebidos, notas gravadas, cursor final.
 
 ## Detalhes técnicos
 
-- Migration adiciona `blocked_until timestamptz` (sem novos GRANTs além dos já
-  existentes na tabela).
-- `syncSefaz` lê/escreve `blocked_until`; a decisão de bloqueio vive no servidor,
-  não na tela.
-- `describeSefazStatus` continua a fonte única dos textos de `cStat`.
-- Nenhuma alteração no serviço da bridge nem no armazenamento do certificado.
+- `syncSefaz`: inverter a ordem gravação/atualização do cursor; acumular
+  `received`/`parsed` por página; `137` grava `blocked_until = agora + 5min`,
+  `656` mantém 1h.
+- Nova função autenticada para limpar `blocked_until` (usada pelo botão), sem
+  mexer no `ult_nsu`.
+- `parseSefazDocument` ganha retorno de motivo quando devolve `null`, para o
+  resumo do painel; nenhuma mudança no serviço da bridge nem no certificado.
