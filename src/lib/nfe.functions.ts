@@ -160,6 +160,18 @@ export const resetSefazCursor = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const clearSefazBlock = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("sefaz_accounts")
+      .update({ blocked_until: null })
+      .eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const testSefazBridge = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async () => {
@@ -220,9 +232,12 @@ export const syncSefaz = createServerFn({ method: "POST" })
 
     const MAX_PAGES = 5;
     const ONE_HOUR = 60 * 60 * 1000;
+    const FIVE_MINUTES = 5 * 60 * 1000;
     let cursor = Number(account.ult_nsu ?? 0);
     let maxNSU = cursor;
     let imported = 0;
+    let received = 0;
+    let parsedCount = 0;
     let status = "Sem retorno da SEFAZ";
     let blockedUntil: string | null = null;
 
@@ -240,15 +255,20 @@ export const syncSefaz = createServerFn({ method: "POST" })
       maxNSU = Math.max(maxNSU, result.maxNSU || 0);
 
       const code = result.cStat ?? "";
-      // 656 = consumo indevido (bloqueio da SEFAZ); 137 = nada novo (exige 1h de espera).
-      if (code === "656" || code === "137") {
-        blockedUntil = new Date(Date.now() + ONE_HOUR).toISOString();
-      }
+      // 656 = consumo indevido (bloqueio exigido pela SEFAZ, 1h).
+      // 137 = nada novo: espera curta, apenas para não repetir consultas em rajada.
+      if (code === "656") blockedUntil = new Date(Date.now() + ONE_HOUR).toISOString();
+      else if (code === "137") blockedUntil = new Date(Date.now() + FIVE_MINUTES).toISOString();
+
+      received += result.docs.length;
 
       const parsed = result.docs
         .map((doc) => parseSefazDocument(doc, account.cnpj))
         .filter((invoice): invoice is NonNullable<typeof invoice> => invoice !== null);
+      parsedCount += parsed.length;
 
+      // Grava as notas ANTES de avançar o cursor: se a gravação falhar, o cursor
+      // fica onde está e os documentos voltam na próxima consulta.
       if (parsed.length > 0) {
         const { data: inserted, error } = await supabase
           .from("invoices")
@@ -269,7 +289,6 @@ export const syncSefaz = createServerFn({ method: "POST" })
       const advanced = nextCursor > cursor;
       cursor = nextCursor;
 
-      // Grava o cursor a cada página para não reprocessar em caso de falha adiante.
       await supabase
         .from("sefaz_accounts")
         .update({
@@ -288,9 +307,13 @@ export const syncSefaz = createServerFn({ method: "POST" })
 
     const nextNsu = cursor;
     const highest = Math.max(maxNSU, nextNsu);
+    const skipped = Math.max(received - parsedCount, 0);
 
     return {
       imported,
+      received,
+      parsed: parsedCount,
+      skipped,
       status,
       ultNSU: nextNsu,
       maxNSU: highest,
