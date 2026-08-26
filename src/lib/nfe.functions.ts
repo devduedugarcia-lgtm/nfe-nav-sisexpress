@@ -154,7 +154,7 @@ export const resetSefazCursor = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { error } = await supabase
       .from("sefaz_accounts")
-      .update({ ult_nsu: 0, last_status: null })
+      .update({ ult_nsu: 0, last_status: null, blocked_until: null })
       .eq("user_id", userId);
     if (error) throw new Error(error.message);
     return { ok: true };
