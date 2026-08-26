@@ -1,0 +1,1 @@
+ALTER TABLE public.sefaz_accounts ADD COLUMN IF NOT EXISTS blocked_until timestamptz;

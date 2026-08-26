@@ -9,7 +9,28 @@ const filterSchema = z.object({
   docType: z.enum(["all", "NFe", "NFCe"]).default("all"),
   direction: z.enum(["all", "entrada", "saida"]).default("all"),
   search: z.string().max(120).default(""),
+  source: z.enum(["all", "demo", "sefaz"]).default("all"),
+  environment: z.enum(["all", "producao", "homologacao"]).default("all"),
 });
+
+type InvoiceFilters = z.infer<typeof filterSchema>;
+
+function applyInvoiceFilters<T extends { eq: any; or: any }>(query: T, data: InvoiceFilters): T {
+  let next: any = query;
+  if (data.docType !== "all") next = next.eq("doc_type", data.docType);
+  if (data.direction !== "all") next = next.eq("direction", data.direction);
+  if (data.source !== "all") next = next.eq("source", data.source);
+  if (data.source === "sefaz" && data.environment !== "all") {
+    next = next.eq("environment", data.environment);
+  }
+  if (data.search.trim()) {
+    const term = `%${data.search.trim()}%`;
+    next = next.or(
+      `issuer_name.ilike.${term},recipient_name.ilike.${term},number.ilike.${term},access_key.ilike.${term}`,
+    );
+  }
+  return next as T;
+}
 
 export const getSession = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -40,14 +61,7 @@ export const listInvoices = createServerFn({ method: "POST" })
       .lte("issued_at", new Date(`${data.to}T23:59:59.999Z`).toISOString())
       .order("issued_at", { ascending: false });
 
-    if (data.docType !== "all") query = query.eq("doc_type", data.docType);
-    if (data.direction !== "all") query = query.eq("direction", data.direction);
-    if (data.search.trim()) {
-      const term = `%${data.search.trim()}%`;
-      query = query.or(
-        `issuer_name.ilike.${term},recipient_name.ilike.${term},number.ilike.${term},access_key.ilike.${term}`,
-      );
-    }
+    query = applyInvoiceFilters(query, data);
 
     const { data: rows, error } = await query.limit(500);
     if (error) throw new Error(error.message);
@@ -95,7 +109,7 @@ export const getSefazAccount = createServerFn({ method: "GET" })
     const { bridgeConfig } = await import("./sefaz.server");
     const { data } = await supabase
       .from("sefaz_accounts")
-      .select("cnpj, uf, environment, ult_nsu, last_sync_at, last_status")
+      .select("cnpj, uf, environment, ult_nsu, last_sync_at, last_status, blocked_until")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -140,7 +154,7 @@ export const resetSefazCursor = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { error } = await supabase
       .from("sefaz_accounts")
-      .update({ ult_nsu: 0, last_status: null })
+      .update({ ult_nsu: 0, last_status: null, blocked_until: null })
       .eq("user_id", userId);
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -162,13 +176,26 @@ export const syncSefaz = createServerFn({ method: "POST" })
 
     const { data: account } = await supabase
       .from("sefaz_accounts")
-      .select("cnpj, uf, environment, ult_nsu")
+      .select("cnpj, uf, environment, ult_nsu, blocked_until")
       .eq("user_id", userId)
       .maybeSingle();
 
     if (!account) {
       throw new Error("Cadastre o CNPJ e a UF na configuração fiscal antes de sincronizar.");
     }
+
+    // A SEFAZ exige intervalo mínimo entre consultas; ignorar isso gera o erro 656.
+    if (account.blocked_until && new Date(account.blocked_until) > new Date()) {
+      const libera = new Date(account.blocked_until).toLocaleTimeString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      throw new Error(
+        `A SEFAZ exige um intervalo entre consultas. Próxima sincronização liberada às ${libera}.`,
+      );
+    }
+
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: cert } = await supabaseAdmin
@@ -192,10 +219,12 @@ export const syncSefaz = createServerFn({ method: "POST" })
     const certPassword = await decryptSecret(cert.password_ciphertext);
 
     const MAX_PAGES = 5;
+    const ONE_HOUR = 60 * 60 * 1000;
     let cursor = Number(account.ult_nsu ?? 0);
     let maxNSU = cursor;
     let imported = 0;
     let status = "Sem retorno da SEFAZ";
+    let blockedUntil: string | null = null;
 
     for (let page = 0; page < MAX_PAGES; page += 1) {
       const result = await callBridge({
@@ -210,6 +239,12 @@ export const syncSefaz = createServerFn({ method: "POST" })
       status = describeSefazStatus(result);
       maxNSU = Math.max(maxNSU, result.maxNSU || 0);
 
+      const code = result.cStat ?? "";
+      // 656 = consumo indevido (bloqueio da SEFAZ); 137 = nada novo (exige 1h de espera).
+      if (code === "656" || code === "137") {
+        blockedUntil = new Date(Date.now() + ONE_HOUR).toISOString();
+      }
+
       const parsed = result.docs
         .map((doc) => parseSefazDocument(doc, account.cnpj))
         .filter((invoice): invoice is NonNullable<typeof invoice> => invoice !== null);
@@ -218,7 +253,11 @@ export const syncSefaz = createServerFn({ method: "POST" })
         const { data: inserted, error } = await supabase
           .from("invoices")
           .upsert(
-            parsed.map((invoice) => ({ ...invoice, user_id: userId })),
+            parsed.map((invoice) => ({
+              ...invoice,
+              user_id: userId,
+              environment: account.environment,
+            })),
             { onConflict: "user_id,access_key", ignoreDuplicates: true },
           )
           .select("id");
@@ -233,10 +272,18 @@ export const syncSefaz = createServerFn({ method: "POST" })
       // Grava o cursor a cada página para não reprocessar em caso de falha adiante.
       await supabase
         .from("sefaz_accounts")
-        .update({ ult_nsu: cursor, last_sync_at: new Date().toISOString(), last_status: status })
+        .update({
+          ult_nsu: cursor,
+          last_sync_at: new Date().toISOString(),
+          last_status: status,
+          blocked_until: blockedUntil,
+        })
         .eq("user_id", userId);
 
-      if (!advanced || result.docs.length === 0 || cursor >= maxNSU) break;
+      // Só continua a paginação quando a SEFAZ devolveu documentos (138) e o NSU avançou.
+      if (blockedUntil || code !== "138" || !advanced || result.docs.length === 0) break;
+      if (cursor >= maxNSU) break;
+      await new Promise((resolve) => setTimeout(resolve, 1200));
     }
 
     const nextNsu = cursor;
@@ -248,6 +295,7 @@ export const syncSefaz = createServerFn({ method: "POST" })
       ultNSU: nextNsu,
       maxNSU: highest,
       pending: Math.max(highest - nextNsu, 0),
+      blockedUntil,
     };
   });
 
@@ -282,14 +330,7 @@ export const exportInvoicesZip = createServerFn({ method: "POST" })
       .gte("issued_at", new Date(`${data.from}T00:00:00.000Z`).toISOString())
       .lte("issued_at", new Date(`${data.to}T23:59:59.999Z`).toISOString());
 
-    if (data.docType !== "all") query = query.eq("doc_type", data.docType);
-    if (data.direction !== "all") query = query.eq("direction", data.direction);
-    if (data.search.trim()) {
-      const term = `%${data.search.trim()}%`;
-      query = query.or(
-        `issuer_name.ilike.${term},recipient_name.ilike.${term},number.ilike.${term},access_key.ilike.${term}`,
-      );
-    }
+    query = applyInvoiceFilters(query, data);
 
     const { data: rows, error } = await query.limit(500);
     if (error) throw new Error(error.message);

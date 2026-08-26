@@ -170,16 +170,6 @@ function DashboardPage() {
     navigate({ to: "/pending-approval", replace: true });
   }
 
-  const filters = useMemo(
-    () => ({ ...range, docType, direction, search: appliedSearch }),
-    [range, docType, direction, appliedSearch],
-  );
-
-  const invoices = useQuery({
-    queryKey: ["invoices", filters],
-    queryFn: () => fetchInvoices({ data: filters }) as Promise<Invoice[]>,
-  });
-
   const sefazAccount = useQuery({
     queryKey: ["sefaz-account"],
     queryFn: () => loadSefazAccount(),
@@ -187,6 +177,32 @@ function DashboardPage() {
 
   const account = sefazAccount.data?.account ?? null;
   const bridgeConfigured = sefazAccount.data?.bridgeConfigured ?? false;
+  const environment = (account?.environment ?? "homologacao") as "producao" | "homologacao";
+
+  // No modo SEFAZ real a tela mostra apenas as notas do ambiente configurado,
+  // sem misturar demonstração nem dados de homologação em produção.
+  const filters = useMemo(
+    () => ({
+      ...range,
+      docType,
+      direction,
+      search: appliedSearch,
+      source: mode === "demo" ? ("demo" as const) : ("sefaz" as const),
+      environment: mode === "demo" ? ("all" as const) : environment,
+    }),
+    [range, docType, direction, appliedSearch, mode, environment],
+  );
+
+  const invoices = useQuery({
+    queryKey: ["invoices", filters],
+    queryFn: () => fetchInvoices({ data: filters }) as Promise<Invoice[]>,
+  });
+
+  const blockedUntil = account?.blocked_until ? new Date(account.blocked_until) : null;
+  const isBlocked = Boolean(blockedUntil && blockedUntil.getTime() > Date.now());
+  const blockedLabel = blockedUntil
+    ? blockedUntil.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : null;
 
   const search = useMutation({
     mutationFn: () => runDemoSearch({ data: filters }),
@@ -209,7 +225,13 @@ function DashboardPage() {
       } else {
         toast.info(result.status);
       }
-      if (result.pending > 0) {
+      if (result.blockedUntil) {
+        const libera = new Date(result.blockedUntil).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        toast.info(`Próxima consulta ao SEFAZ liberada às ${libera}.`);
+      } else if (result.pending > 0) {
         toast.info(`Ainda há ${result.pending} documento(s) na fila. Sincronize novamente.`);
       }
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
@@ -468,14 +490,14 @@ function DashboardPage() {
                 <Button
                   className="w-full"
                   onClick={() => sync.mutate()}
-                  disabled={sync.isPending || !account || !bridgeConfigured}
+                  disabled={sync.isPending || !account || !bridgeConfigured || isBlocked}
                 >
                   {sync.isPending ? (
                     <Loader2 className="mr-2 size-4 animate-spin" />
                   ) : (
                     <CloudDownload className="mr-2 size-4" />
                   )}
-                  Sincronizar com o SEFAZ
+                  {isBlocked ? `Disponível às ${blockedLabel}` : "Sincronizar com o SEFAZ"}
                 </Button>
               )}
             </div>
@@ -497,6 +519,18 @@ function DashboardPage() {
                   <p>
                     Última sincronização em {formatDateTime(account.last_sync_at)}
                     {account.last_status ? ` · ${account.last_status}` : ""}
+                  </p>
+                )}
+                {isBlocked && (
+                  <p>
+                    A SEFAZ exige intervalo entre consultas (erro 656 de consumo indevido). Nova
+                    consulta liberada às {blockedLabel}.
+                  </p>
+                )}
+                {account && (
+                  <p>
+                    Exibindo apenas notas do ambiente{" "}
+                    {environment === "producao" ? "de Produção" : "de Homologação"}.
                   </p>
                 )}
                 {!bridgeConfigured && (

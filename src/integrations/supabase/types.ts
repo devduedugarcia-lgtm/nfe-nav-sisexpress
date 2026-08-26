@@ -65,6 +65,7 @@ export type Database = {
           created_at: string
           direction: string
           doc_type: string
+          environment: string | null
           id: string
           issued_at: string
           issuer_cnpj: string
@@ -86,6 +87,7 @@ export type Database = {
           created_at?: string
           direction: string
           doc_type: string
+          environment?: string | null
           id?: string
           issued_at: string
           issuer_cnpj: string
@@ -107,6 +109,7 @@ export type Database = {
           created_at?: string
           direction?: string
           doc_type?: string
+          environment?: string | null
           id?: string
           issued_at?: string
           issuer_cnpj?: string
@@ -154,6 +157,7 @@ export type Database = {
       }
       sefaz_accounts: {
         Row: {
+          blocked_until: string | null
           cnpj: string
           created_at: string
           environment: string
@@ -165,6 +169,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          blocked_until?: string | null
           cnpj: string
           created_at?: string
           environment?: string
@@ -176,6 +181,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          blocked_until?: string | null
           cnpj?: string
           created_at?: string
           environment?: string
