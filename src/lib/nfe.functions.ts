@@ -61,14 +61,7 @@ export const listInvoices = createServerFn({ method: "POST" })
       .lte("issued_at", new Date(`${data.to}T23:59:59.999Z`).toISOString())
       .order("issued_at", { ascending: false });
 
-    if (data.docType !== "all") query = query.eq("doc_type", data.docType);
-    if (data.direction !== "all") query = query.eq("direction", data.direction);
-    if (data.search.trim()) {
-      const term = `%${data.search.trim()}%`;
-      query = query.or(
-        `issuer_name.ilike.${term},recipient_name.ilike.${term},number.ilike.${term},access_key.ilike.${term}`,
-      );
-    }
+    query = applyInvoiceFilters(query, data);
 
     const { data: rows, error } = await query.limit(500);
     if (error) throw new Error(error.message);
