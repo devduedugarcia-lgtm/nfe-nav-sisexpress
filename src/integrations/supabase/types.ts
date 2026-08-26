@@ -154,6 +154,7 @@ export type Database = {
       }
       sefaz_accounts: {
         Row: {
+          blocked_until: string | null
           cnpj: string
           created_at: string
           environment: string
@@ -165,6 +166,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          blocked_until?: string | null
           cnpj: string
           created_at?: string
           environment?: string
@@ -176,6 +178,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          blocked_until?: string | null
           cnpj?: string
           created_at?: string
           environment?: string
