@@ -245,6 +245,17 @@ function DashboardPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const unblock = useMutation({
+    mutationFn: () => releaseBlock(),
+    onSuccess: () => {
+      toast.success("Bloqueio liberado. Você pode sincronizar novamente.");
+      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+
+
   const saveAccount = useMutation({
     mutationFn: () =>
       persistSefazAccount({
@@ -492,18 +503,31 @@ function DashboardPage() {
                   Gerar notas de demonstração
                 </Button>
               ) : (
-                <Button
-                  className="w-full"
-                  onClick={() => sync.mutate()}
-                  disabled={sync.isPending || !account || !bridgeConfigured || isBlocked}
-                >
-                  {sync.isPending ? (
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                  ) : (
-                    <CloudDownload className="mr-2 size-4" />
+                <div className="w-full space-y-2">
+                  <Button
+                    className="w-full"
+                    onClick={() => sync.mutate()}
+                    disabled={sync.isPending || !account || !bridgeConfigured || isBlocked}
+                  >
+                    {sync.isPending ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                    ) : (
+                      <CloudDownload className="mr-2 size-4" />
+                    )}
+                    {isBlocked ? `Disponível às ${blockedLabel}` : "Sincronizar com o SEFAZ"}
+                  </Button>
+                  {isBlocked && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => unblock.mutate()}
+                      disabled={unblock.isPending}
+                    >
+                      {unblock.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+                      Liberar consulta agora
+                    </Button>
                   )}
-                  {isBlocked ? `Disponível às ${blockedLabel}` : "Sincronizar com o SEFAZ"}
-                </Button>
+                </div>
               )}
             </div>
           </div>
