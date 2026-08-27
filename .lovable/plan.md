@@ -1,34 +1,44 @@
-# Trazer as NFC-e emitidas para o painel
+# Importar NFC-e emitidas em SP (NFCeListagemChaves + NFCeDownloadXML)
 
-## O que está acontecendo
+## Por que hoje não vem
 
-A sincronização atual usa a distribuição nacional da SEFAZ (`NFeDistribuicaoDFe`). Confirmei no banco: as 15 notas reais importadas são todas `resNFe` de **entrada**, modelo 55. Essa distribuição não entrega NFC-e (modelo 65) — nem as emitidas pelo próprio CNPJ. Ou seja, nenhuma mudança no sincronismo atual fará as NFC-e aparecerem; precisamos de um caminho adicional.
+Confirmei no banco: as 15 notas reais são todas `resNFe` modelo 55, de entrada. A distribuição nacional (`NFeDistribuicaoDFe`) não entrega NFC-e (modelo 65), então nenhuma NFC-e emitida aparece por esse caminho. A SEFAZ-SP oferece dois webservices próprios para isso, e é esse caminho que vamos implementar.
 
-Como não houve resposta sobre a preferência, vou implementar os dois caminhos mais úteis, no mesmo lugar do painel.
+## Fluxo novo
 
-## Caminho 1 — Importar XMLs emitidos (principal)
+```text
+Painel → syncNfceSP (server fn) → bridge (mTLS com o certificado da empresa)
+   1) NFCeListagemChaves  → chaves do período
+   2) NFCeDownloadXML     → XML de cada chave nova
+   3) grava em invoices (doc_type NFCe, direction saida)
+```
 
-Nova área "Importar XMLs" na tela de sincronização:
-- Aceita vários arquivos `.xml` ou um `.zip` exportado do sistema emissor de NFC-e.
-- Cada XML é lido no servidor, normalizado com o mesmo parser já existente (chave, número, série, modelo 55/65, emitente, destinatário, data, valor, status/cancelamento) e gravado com `source = 'sefaz'` e o ambiente configurado.
-- Reaproveita o upsert por `(user_id, access_key)`, então reimportar o mesmo arquivo não duplica.
-- Resumo ao final: arquivos lidos, notas gravadas, ignorados (com motivo curto).
+- Endpoints: `https://nfce.fazenda.sp.gov.br/ws/...` (produção) e `https://homologacao.nfce.fazenda.sp.gov.br/ws/...` (homologação), escolhidos pelo ambiente já cadastrado na configuração fiscal.
+- O CNPJ consultado é o do próprio certificado (e-CNPJ), como a nota técnica exige — nada a informar além do que já está cadastrado.
+- Período pedido em blocos (ex. 1 dia por chamada) para respeitar o limite de 2000 chaves; quando a SEFAZ responder `101` (lista incompleta), o app reduz automaticamente a janela e repete.
+- Só baixa o XML de chaves que ainda não existem no banco, evitando consultas desnecessárias.
 
-## Caminho 2 — Buscar por chave de acesso
+## Na bridge (serviço Node.js)
 
-- Campo para colar uma ou várias chaves de 44 dígitos (uma por linha).
-- Novo endpoint na bridge que consulta a SEFAZ por chave (`consChNFe`) com o certificado da empresa, devolvendo o XML completo quando disponível.
-- Mesma normalização e gravação do caminho 1. Chaves com retorno negativo aparecem na lista de ignorados com a mensagem da SEFAZ.
+Duas rotas novas, stateless como as atuais (recebem PFX cifrado + senha por requisição, cache de agente mTLS por thumbprint):
+- `POST /nfce/chaves` → monta o SOAP com `tpAmb`, `dhReq`, `dataHoraInicial`, `dataHoraFinal`; devolve `cStat`, `xMotivo` e a lista de chaves.
+- `POST /nfce/xml` → monta o SOAP por chave; devolve `cStat`, `xMotivo`, o XML da NFC-e e os eventos (`procEventoNFe`) quando houver.
 
-## Ajustes no painel
+## No app
 
-- As NFC-e importadas passam a contar nos cards e a aparecer na lista, com o filtro de tipo "NFCe" já existente funcionando.
-- Etiqueta de origem distinguindo "SEFAZ" (distribuição) de "Importado" para você saber de onde cada nota veio.
-- Texto explicando, na tela, que NFC-e não vem pela distribuição nacional e precisa ser importada.
+- `syncNfceSP` em `src/lib/nfe.functions.ts`: autenticada, usa o certificado cifrado do usuário, percorre o período, grava as notas com `source = 'sefaz'`, `doc_type = 'NFCe'`, `direction = 'saida'` e o ambiente atual; upsert por `(user_id, access_key)` (sem duplicar).
+- Cursor próprio da NFC-e em `sefaz_accounts` (`nfce_last_sync_at`, `nfce_last_status`), separado do NSU da distribuição, para as sincronizações não interferirem uma na outra.
+- Cooldown para `656` (consumo indevido) igual ao já existente, contado só para a NFC-e.
+- Painel: no modo SEFAZ real, botão "Sincronizar NFC-e (SP)" com seleção de período (padrão: últimos 7 dias) e resumo — chaves encontradas, XMLs baixados, ignorados com o motivo da SEFAZ.
+- Mensagens legíveis para os retornos da nota técnica: `100/200` sucesso, `101` lista incompleta (janela reduzida automaticamente), `107` sem registros, `205` chave não encontrada, `207` fora do prazo, `656` consumo indevido, `108/109` serviço paralisado.
 
 ## Detalhes técnicos
 
-- Banco: nova coluna `origin_detail` (ou valor extra em `source`) para diferenciar `sefaz` de `import`/`chave`, com migration e GRANTs; sem alterar RLS existente.
-- Servidor: `importInvoiceXmls` e `fetchInvoicesByKey` em `src/lib/nfe.functions.ts`, autenticadas, com validação Zod (tamanho de arquivo, quantidade máxima por lote); descompactação de ZIP e parse sem dependência nativa, compatível com o runtime.
-- Bridge: rota `POST /consulta-chave` stateless, recebendo PFX cifrado/senha como já faz `/distribuicao`, com cache de agente mTLS por thumbprint.
-- Sem alteração no cooldown de 656/137 do sincronismo atual.
+- Migration: colunas de cursor NFC-e em `sefaz_accounts` (nullable, sem mexer em RLS existente).
+- Parser reaproveita `parseSefazDocument`, que já identifica modelo 65 pela chave; ajuste para tratar o XML completo da NFC-e e ignorar apenas os eventos.
+- Segredos e descriptografia do PFX apenas dentro do `.handler()`, como hoje; nada sensível no bundle do cliente.
+- Assinatura/namespace conforme MOC (namespace padrão da NFe, sem prefixos e sem caracteres de edição), para evitar as rejeições 587/588/404.
+
+## O que preciso de você
+
+Depois de eu entregar o código, atualizar o serviço no Render (deploy da nova versão da bridge) — nenhuma variável nova é necessária.
