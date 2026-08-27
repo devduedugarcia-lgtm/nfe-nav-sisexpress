@@ -245,6 +245,17 @@ function DashboardPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const unblock = useMutation({
+    mutationFn: () => releaseBlock(),
+    onSuccess: () => {
+      toast.success("Bloqueio liberado. Você pode sincronizar novamente.");
+      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+
+
   const saveAccount = useMutation({
     mutationFn: () =>
       persistSefazAccount({
