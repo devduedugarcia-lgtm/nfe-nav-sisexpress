@@ -193,9 +193,10 @@ function parseDocs(xml) {
   return docs;
 }
 
-async function callSefaz(body, ambiente, agent) {
-  const url = ENDPOINTS[ambiente] ?? ENDPOINTS.homologacao;
+async function callSefaz(body, ambiente, agent, endpoint) {
+  const url = endpoint ?? ENDPOINTS[ambiente] ?? ENDPOINTS.homologacao;
   const target = new URL(url);
+
 
   return new Promise((resolve, reject) => {
     const request = https.request(
