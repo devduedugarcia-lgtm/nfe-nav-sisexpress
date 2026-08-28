@@ -129,6 +129,19 @@ const ENDPOINTS = {
   homologacao: "https://hom.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx",
 };
 
+// SAE-NFC-e (SEFAZ-SP): listagem de chaves e download do XML da NFC-e.
+const NFCE_ENDPOINTS = {
+  producao: {
+    chaves: "https://nfce.fazenda.sp.gov.br/ws/NFCeListagemChaves.asmx",
+    xml: "https://nfce.fazenda.sp.gov.br/ws/NFCeDownloadXML.asmx",
+  },
+  homologacao: {
+    chaves: "https://homologacao.nfce.fazenda.sp.gov.br/ws/NFCeListagemChaves.asmx",
+    xml: "https://homologacao.nfce.fazenda.sp.gov.br/ws/NFCeDownloadXML.asmx",
+  },
+};
+
+
 const UF_CODES = {
   RO: 11, AC: 12, AM: 13, RR: 14, PA: 15, AP: 16, TO: 17, MA: 21, PI: 22,
   CE: 23, RN: 24, PB: 25, PE: 26, AL: 27, SE: 28, BA: 29, MG: 31, ES: 32,
