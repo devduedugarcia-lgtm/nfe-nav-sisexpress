@@ -163,6 +163,9 @@ export type Database = {
           environment: string
           last_status: string | null
           last_sync_at: string | null
+          nfce_blocked_until: string | null
+          nfce_last_status: string | null
+          nfce_last_sync_at: string | null
           uf: string
           ult_nsu: number
           updated_at: string
@@ -175,6 +178,9 @@ export type Database = {
           environment?: string
           last_status?: string | null
           last_sync_at?: string | null
+          nfce_blocked_until?: string | null
+          nfce_last_status?: string | null
+          nfce_last_sync_at?: string | null
           uf?: string
           ult_nsu?: number
           updated_at?: string
@@ -187,6 +193,9 @@ export type Database = {
           environment?: string
           last_status?: string | null
           last_sync_at?: string | null
+          nfce_blocked_until?: string | null
+          nfce_last_status?: string | null
+          nfce_last_sync_at?: string | null
           uf?: string
           ult_nsu?: number
           updated_at?: string
