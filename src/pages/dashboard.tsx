@@ -1,60 +1,60 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Download, FileText, Calendar, Building2 } from "lucide-react";
-''
-// Validação de CNPJ
-const validarCNPJ = (cnpj: string) => {
-  const limpo = cnpj.replace(/\D/g, "");
-  return limpo.length === 14;
+import { Search, Download, Calendar, FileKey } from "lucide-react";
+import { useCertificados } from "@/hooks/useCertificados";
+
+// ✅ URL DA SUA BRIDGE JÁ CONFIGURADA!
+const BRIDGE_URL = "https://sefaz-bridge-a33m.onrender.com/nfce-sp";
+
+const formatarCNPJ = (cnpj: string) => {
+  const l = cnpj.replace(/\D/g, "");
+  return l.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
 };
 
 const Dashboard = () => {
-  const [cnpj, setCnpj] = useState("");
+  const { certificados, carregar, obterParaBusca } = useCertificados();
+  const [certificadoId, setCertificadoId] = useState("");
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
   const [notas, setNotas] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
 
-  const formatarCNPJ = (valor: string) => {
-    const limpo = valor.replace(/\D/g, "");
-    if (limpo.length <= 2) return limpo;
-    if (limpo.length <= 5) return `${limpo.slice(0, 2)}.${limpo.slice(2)}`;
-    if (limpo.length <= 8) return `${limpo.slice(0, 2)}.${limpo.slice(2, 5)}.${limpo.slice(5)}`;
-    if (limpo.length <= 12) return `${limpo.slice(0, 2)}.${limpo.slice(2, 5)}.${limpo.slice(5, 8)}/${limpo.slice(8)}`;
-    return `${limpo.slice(0, 2)}.${limpo.slice(2, 5)}.${limpo.slice(5, 8)}/${limpo.slice(8, 12)}-${limpo.slice(12, 14)}`;
-  };
-
-  const handleCNPJChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setCnpj(formatarCNPJ(e.target.value));
-  };
+  useEffect(() => { carregar(); }, []);
 
   const buscarNotas = async () => {
     setErro("");
-    const cnpjLimpo = cnpj.replace(/\D/g, "");
+    setNotas([]);
 
-    if (!validarCNPJ(cnpjLimpo)) {
-      setErro("CNPJ inválido! Digite 14 dígitos.");
+    if (!certificadoId) {
+      setErro("Selecione um certificado");
       return;
     }
     if (!dataInicio || !dataFim) {
-      setErro("Informe o período (data inicial e final).");
+      setErro("Informe o período");
       return;
     }
 
     setCarregando(true);
     try {
-      const resposta = await fetch("/api/sefaz/nfce-sp/buscar-por-cnpj", {
+      // Obtém o certificado completo do banco
+      const cert = await obterParaBusca(certificadoId);
+
+      // Envia TUDO para a bridge
+      const resposta = await fetch(`${BRIDGE_URL}/buscar-por-cnpj`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          cnpj: cnpjLimpo,
+          cnpj: cert.cnpj,
           dataInicio,
-          dataFim
-        })
+          dataFim,
+          certificado_pfx: cert.certificado_pfx,
+          senha: cert.senha,
+        }),
       });
 
       const dados = await resposta.json();
@@ -70,52 +70,62 @@ const Dashboard = () => {
 
   const baixarXML = async (chave: string) => {
     try {
-      window.open(`/api/sefaz/nfce-sp/download-xml?chave=${encodeURIComponent(chave)}`, "_blank");
-    } catch (err) {
+      const cert = await obterParaBusca(certificadoId);
+      window.open(
+        `${BRIDGE_URL}/download-xml?chave=${encodeURIComponent(chave)}&cnpj=${cert.cnpj}`,
+        "_blank"
+      );
+    } catch {
       alert("Erro ao baixar XML");
     }
   };
 
   return (
     <div className="space-y-6 p-6">
-      <h2 className="text-2xl font-bold">Buscar NFC-e por CNPJ</h2>
+      <h2 className="text-2xl font-bold">Buscar NFC-e por Período</h2>
 
       {/* Formulário de Busca */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/30">
         <div>
-          <Label htmlFor="cnpj" className="flex items-center gap-1">
-            <Building2 size={14} /> CNPJ Emitente
+          <Label className="flex items-center gap-1">
+            <FileKey size={14} /> Certificado / Cliente
           </Label>
-          <Input
-            id="cnpj"
-            placeholder="00.000.000/0000-00"
-            value={cnpj}
-            onChange={handleCNPJChange}
-            maxLength={18}
-          />
+          <Select value={certificadoId} onValueChange={setCertificadoId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione um cliente" />
+            </SelectTrigger>
+            <SelectContent>
+              {certificados.length === 0 ? (
+                <p className="p-2 text-sm text-muted-foreground">Nenhum certificado cadastrado</p>
+              ) : (
+                certificados.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.razao_social} — {formatarCNPJ(c.cnpj)}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
         </div>
+
         <div>
-          <Label htmlFor="dataInicio" className="flex items-center gap-1">
-            <Calendar size={14} /> Data Início
-          </Label>
+          <Label>Data Início</Label>
           <Input
-            id="dataInicio"
             type="date"
             value={dataInicio}
             onChange={(e) => setDataInicio(e.target.value)}
           />
         </div>
+
         <div>
-          <Label htmlFor="dataFim" className="flex items-center gap-1">
-            <Calendar size={14} /> Data Fim
-          </Label>
+          <Label>Data Fim</Label>
           <Input
-            id="dataFim"
             type="date"
             value={dataFim}
             onChange={(e) => setDataFim(e.target.value)}
           />
         </div>
+
         <div className="flex items-end">
           <Button onClick={buscarNotas} disabled={carregando} className="w-full gap-2">
             <Search size={16} />
@@ -143,11 +153,11 @@ const Dashboard = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {notas.map((nota) => (
-                <TableRow key={nota.chaveAcesso}>
+              {notas.map((nota, i) => (
+                <TableRow key={i}>
                   <TableCell className="font-mono text-xs">{nota.chaveAcesso}</TableCell>
                   <TableCell>{nota.dataEmissao}</TableCell>
-                  <TableCell>R$ {nota.valor?.toFixed(2) || "0,00"}</TableCell>
+                  <TableCell>R$ {(nota.valor || 0).toFixed(2)}</TableCell>
                   <TableCell>
                     <span className={`px-2 py-0.5 rounded text-xs ${
                       nota.situacao === "Autorizada" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
