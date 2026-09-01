@@ -269,3 +269,115 @@ export function describeSefazStatus(result: BridgeResponse): string {
   if (code === "138") return "138 · Documentos localizados";
   return `${code} · ${result.xMotivo ?? "Retorno da SEFAZ"}`;
 }
+
+// ---------------------------------------------------------------------------
+// SAE-NFC-e (SEFAZ-SP)
+// ---------------------------------------------------------------------------
+
+export type NfceKeysResponse = {
+  cStat: string | null;
+  xMotivo: string | null;
+  dhEmisUltNfce: string | null;
+  chaves: string[];
+};
+
+export type NfceXmlResponse = {
+  cStat: string | null;
+  xMotivo: string | null;
+  chNFCe: string;
+  xml: string | null;
+  eventos: string[];
+};
+
+type NfceCert = { pfxBase64: string; certPassword: string };
+
+async function postBridge<T>(path: string, payload: unknown): Promise<T> {
+  const { url, token, configured } = bridgeConfig();
+  if (!configured) {
+    throw new Error(
+      "Integração com o SEFAZ não configurada. Cadastre a URL e o token do serviço de consulta.",
+    );
+  }
+
+  const response = await fetch(`${url!.replace(/\/$/, "")}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token!}` },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    let message = `O serviço de consulta respondeu ${response.status}`;
+    try {
+      const parsed = JSON.parse(text) as { error?: string };
+      if (parsed.error) message = parsed.error;
+    } catch {
+      /* mantém a mensagem genérica */
+    }
+    if (response.status === 404) {
+      message =
+        "O serviço publicado ainda não tem os endpoints da NFC-e. Faça o deploy da nova versão da pasta sefaz-bridge.";
+    }
+    throw new Error(message);
+  }
+
+  return JSON.parse(text) as T;
+}
+
+/** `NFCeListagemChaves`: chaves emitidas no período (máx. 2000 por chamada). */
+export function listNfceKeys(
+  input: { ambiente: string; dataHoraInicial: string; dataHoraFinal: string } & NfceCert,
+): Promise<NfceKeysResponse> {
+  return postBridge<NfceKeysResponse>("/nfce/chaves", input);
+}
+
+/** `NFCeDownloadXML`: XML completo (`nfeProc`) de uma chave. */
+export function downloadNfceXml(
+  input: { ambiente: string; chNFCe: string } & NfceCert,
+): Promise<NfceXmlResponse> {
+  return postBridge<NfceXmlResponse>("/nfce/xml", input);
+}
+
+/**
+ * Interpreta o retorno do download da NFC-e. O XML vem como `nfeProc`, então o
+ * parser da distribuição é reaproveitado com o schema equivalente.
+ */
+export function parseNfceDocument(
+  doc: { chNFCe: string; xml: string },
+  ownerCnpj: string,
+): ParsedInvoice | null {
+  const parsed = parseSefazDocument(
+    { nsu: 0, schema: "procNFe_v4.00.xsd", xml: doc.xml },
+    ownerCnpj,
+  );
+  if (!parsed) return null;
+  return {
+    ...parsed,
+    access_key: doc.chNFCe,
+    doc_type: "NFCe",
+    direction: "saida",
+    schema_type: "nfceDownloadXML",
+    nsu: 0,
+  };
+}
+
+export function describeNfceStatus(cStat: string | null, xMotivo: string | null): string {
+  const code = cStat ?? "?";
+  const map: Record<string, string> = {
+    "100": "Autorizado o uso da NFC-e",
+    "101": "Lista incompleta: continuando pelo último horário retornado",
+    "107": "Nenhuma NFC-e encontrada no período",
+    "104": "Consulta fora do prazo de 100 dias",
+    "108": "Serviço da SEFAZ paralisado momentaneamente",
+    "109": "Serviço da SEFAZ paralisado sem previsão",
+    "200": "Consulta processada com sucesso",
+    "203": "Chave pertence a outro CNPJ",
+    "204": "Chave inválida",
+    "205": "NFC-e não encontrada",
+    "207": "Consulta fora do prazo permitido",
+    "282": "Certificado digital do emitente inválido",
+    "285": "Certificado digital sem permissão para o serviço",
+    "656": "Consumo indevido: aguarde 1 hora para consultar novamente",
+  };
+  return `${code} · ${map[code] ?? xMotivo ?? "Retorno da SEFAZ"}`;
+}

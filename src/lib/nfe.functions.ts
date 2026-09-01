@@ -109,7 +109,9 @@ export const getSefazAccount = createServerFn({ method: "GET" })
     const { bridgeConfig } = await import("./sefaz.server");
     const { data } = await supabase
       .from("sefaz_accounts")
-      .select("cnpj, uf, environment, ult_nsu, last_sync_at, last_status, blocked_until")
+      .select(
+        "cnpj, uf, environment, ult_nsu, last_sync_at, last_status, blocked_until, nfce_last_sync_at, nfce_last_status, nfce_blocked_until",
+      )
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -170,6 +172,195 @@ export const clearSefazBlock = createServerFn({ method: "POST" })
       .eq("user_id", userId);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+export const clearNfceBlock = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { error } = await supabase
+      .from("sefaz_accounts")
+      .update({ nfce_blocked_until: null })
+      .eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+/**
+ * Importa as NFC-e emitidas em SP via SAE-NFC-e: lista as chaves do período
+ * (`NFCeListagemChaves`) e baixa o XML (`NFCeDownloadXML`) apenas das chaves
+ * que ainda não estão no banco.
+ */
+export const syncNfceSP = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({ from: z.string().min(10).max(10), to: z.string().min(10).max(10) })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { listNfceKeys, downloadNfceXml, parseNfceDocument, describeNfceStatus } = await import(
+      "./sefaz.server"
+    );
+    const { decryptSecret } = await import("./crypto.server");
+
+    const { data: account } = await supabase
+      .from("sefaz_accounts")
+      .select("cnpj, uf, environment, nfce_blocked_until")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!account) {
+      throw new Error("Cadastre o CNPJ e a UF na configuração fiscal antes de sincronizar.");
+    }
+    if (account.uf !== "SP") {
+      throw new Error(
+        "O serviço SAE-NFC-e é exclusivo da SEFAZ de São Paulo. Configure a UF como SP para usar esta consulta.",
+      );
+    }
+    if (account.nfce_blocked_until && new Date(account.nfce_blocked_until) > new Date()) {
+      const libera = new Date(account.nfce_blocked_until).toLocaleTimeString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      throw new Error(`A SEFAZ exige intervalo entre consultas. Liberado às ${libera}.`);
+    }
+
+    const start = new Date(`${data.from}T00:00:00`);
+    const end = new Date(`${data.to}T23:59:59`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+      throw new Error("Informe um período válido.");
+    }
+    if ((Date.now() - start.getTime()) / 86_400_000 > 100) {
+      throw new Error("A SEFAZ mantém apenas os últimos 100 dias de NFC-e.");
+    }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: cert } = await supabaseAdmin
+      .from("certificates")
+      .select("pfx_ciphertext, password_ciphertext, valid_until")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!cert?.pfx_ciphertext || !cert.password_ciphertext) {
+      throw new Error(
+        "Envie seu certificado digital (.pfx ou .p12) na tela Certificado antes de consultar o SEFAZ.",
+      );
+    }
+    if (new Date(`${cert.valid_until}T23:59:59`) < new Date()) {
+      throw new Error(`Certificado digital vencido em ${cert.valid_until}.`);
+    }
+
+    const pfxBase64 = await decryptSecret(cert.pfx_ciphertext);
+    const certPassword = await decryptSecret(cert.password_ciphertext);
+
+    const fmt = (value: Date) =>
+      `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(
+        value.getDate(),
+      ).padStart(2, "0")}T${String(value.getHours()).padStart(2, "0")}:${String(
+        value.getMinutes(),
+      ).padStart(2, "0")}`;
+
+    const MAX_ROUNDS = 10;
+    const MAX_DOWNLOADS = 200;
+    const chaves: string[] = [];
+    let cursor = start;
+    let status = "Sem retorno da SEFAZ";
+    let blockedUntil: string | null = null;
+
+    for (let round = 0; round < MAX_ROUNDS; round += 1) {
+      const result = await listNfceKeys({
+        ambiente: account.environment,
+        dataHoraInicial: fmt(cursor),
+        dataHoraFinal: fmt(end),
+        pfxBase64,
+        certPassword,
+      });
+
+      status = describeNfceStatus(result.cStat, result.xMotivo);
+      for (const key of result.chaves ?? []) if (!chaves.includes(key)) chaves.push(key);
+
+      if (result.cStat === "656") {
+        blockedUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        break;
+      }
+      // 101 = lista incompleta: continua a partir da última emissão retornada.
+      if (result.cStat === "101" && result.dhEmisUltNfce) {
+        const next = new Date(result.dhEmisUltNfce);
+        if (Number.isNaN(next.getTime()) || next <= cursor) break;
+        cursor = new Date(next.getTime() + 60_000);
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        continue;
+      }
+      break;
+    }
+
+    let existing: string[] = [];
+    if (chaves.length > 0) {
+      const { data: rows } = await supabase
+        .from("invoices")
+        .select("access_key")
+        .eq("user_id", userId)
+        .in("access_key", chaves);
+      existing = (rows ?? []).map((row) => row.access_key);
+    }
+
+    const pending = chaves.filter((key) => !existing.includes(key)).slice(0, MAX_DOWNLOADS);
+    let imported = 0;
+    let skipped = 0;
+
+    for (const chNFCe of pending) {
+      const result = await downloadNfceXml({
+        ambiente: account.environment,
+        chNFCe,
+        pfxBase64,
+        certPassword,
+      });
+
+      if (result.cStat === "656") {
+        blockedUntil = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+        status = describeNfceStatus(result.cStat, result.xMotivo);
+        break;
+      }
+
+      const invoice = result.xml ? parseNfceDocument({ chNFCe, xml: result.xml }, account.cnpj) : null;
+      if (!invoice) {
+        skipped += 1;
+        continue;
+      }
+
+      const { data: inserted, error } = await supabase
+        .from("invoices")
+        .upsert(
+          [{ ...invoice, user_id: userId, environment: account.environment }],
+          { onConflict: "user_id,access_key", ignoreDuplicates: true },
+        )
+        .select("id");
+      if (error) throw new Error(error.message);
+      imported += inserted?.length ?? 0;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+
+    await supabase
+      .from("sefaz_accounts")
+      .update({
+        nfce_last_sync_at: new Date().toISOString(),
+        nfce_last_status: status,
+        nfce_blocked_until: blockedUntil,
+      })
+      .eq("user_id", userId);
+
+    return {
+      found: chaves.length,
+      downloaded: pending.length,
+      imported,
+      skipped,
+      alreadyStored: existing.length,
+      status,
+      blockedUntil,
+    };
   });
 
 export const testSefazBridge = createServerFn({ method: "POST" })

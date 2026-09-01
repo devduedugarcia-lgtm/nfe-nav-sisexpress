@@ -66,6 +66,7 @@ import {
 } from "@/lib/download";
 import {
   clearInvoices,
+  clearNfceBlock,
   clearSefazBlock,
   exportInvoicesZip,
   getInvoiceXml,
@@ -75,6 +76,7 @@ import {
   resetSefazCursor,
   saveSefazAccount,
   searchSefazDemo,
+  syncNfceSP,
   syncSefaz,
   testSefazBridge,
 } from "@/lib/nfe.functions";
@@ -134,6 +136,11 @@ function periodRange(preset: string) {
   if (preset === "year") {
     return { from: toInputDate(new Date(today.getFullYear(), 0, 1)), to };
   }
+  if (preset === "last-7") {
+    const start = new Date(today);
+    start.setDate(start.getDate() - 7);
+    return { from: toInputDate(start), to };
+  }
   const start = new Date(today);
   start.setDate(start.getDate() - 30);
   return { from: toInputDate(start), to };
@@ -146,10 +153,12 @@ function DashboardPage() {
   const fetchInvoices = useServerFn(listInvoices);
   const runDemoSearch = useServerFn(searchSefazDemo);
   const runSefazSync = useServerFn(syncSefaz);
+  const runNfceSync = useServerFn(syncNfceSP);
   const loadSefazAccount = useServerFn(getSefazAccount);
   const persistSefazAccount = useServerFn(saveSefazAccount);
   const resetCursor = useServerFn(resetSefazCursor);
   const releaseBlock = useServerFn(clearSefazBlock);
+  const releaseNfceBlock = useServerFn(clearNfceBlock);
   const runBridgeTest = useServerFn(testSefazBridge);
   const fetchXml = useServerFn(getInvoiceXml);
   const exportZip = useServerFn(exportInvoicesZip);
@@ -165,6 +174,7 @@ function DashboardPage() {
   const [mode, setMode] = useState<"demo" | "sefaz">("demo");
   const [configOpen, setConfigOpen] = useState(false);
   const [form, setForm] = useState({ cnpj: "", uf: "SP", environment: "homologacao" });
+  const [nfceRange, setNfceRange] = useState(() => periodRange("last-7"));
 
   const session = useQuery({ queryKey: ["session"], queryFn: () => loadSession() });
 
@@ -254,6 +264,35 @@ function DashboardPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const nfceSync = useMutation({
+    mutationFn: () => runNfceSync({ data: { from: nfceRange.from, to: nfceRange.to } }),
+    onSuccess: (result) => {
+      const resumo = `${result.found} chave(s) no período · ${result.imported} nota(s) gravada(s)${
+        result.skipped > 0 ? ` · ${result.skipped} sem XML utilizável` : ""
+      }`;
+      if (result.imported > 0) toast.success(`${resumo} · ${result.status}`);
+      else toast.info(`${result.status} · ${resumo}`);
+      if (result.blockedUntil) {
+        const libera = new Date(result.blockedUntil).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        toast.info(`Próxima consulta de NFC-e liberada às ${libera}.`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const unblockNfce = useMutation({
+    mutationFn: () => releaseNfceBlock(),
+    onSuccess: () => {
+      toast.success("Bloqueio da NFC-e liberado.");
+      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
 
   const saveAccount = useMutation({

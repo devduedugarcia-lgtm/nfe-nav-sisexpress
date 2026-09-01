@@ -336,4 +336,113 @@ app.post("/distribuicao", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// SAE-NFC-e (SEFAZ-SP): listagem de chaves e download do XML da NFC-e
+// ---------------------------------------------------------------------------
+
+/** Resolve o certificado da chamada (dinamico) ou o de fallback do ambiente. */
+function resolveCert(body) {
+  const { pfxBase64, certPassword } = body ?? {};
+  if (pfxBase64) {
+    if (!certPassword) return { error: "Senha do certificado nao informada." };
+    return {
+      pfx: Buffer.from(String(pfxBase64).replace(/\s+/g, ""), "base64"),
+      passphrase: certPassword,
+    };
+  }
+  if (envPfx) return { pfx: envPfx, passphrase: CERT_PASSWORD };
+  return { error: "Nenhum certificado informado na chamada e nenhum de teste configurado." };
+}
+
+function nfceEnvelope(ambiente, inner, action) {
+  const tpAmb = ambiente === "producao" ? 1 : 2;
+  return `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><${action} xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/${action}">${inner(tpAmb)}</${action}></soap12:Body></soap12:Envelope>`;
+}
+
+function bridgeError(error) {
+  const raw = error instanceof Error ? error.message : "Falha na SEFAZ";
+  return /too long|mac verify failure|header too long|wrong tag|unable to load/i.test(raw)
+    ? describeCertError(error)
+    : raw;
+}
+
+app.post("/nfce/chaves", async (req, res) => {
+  const { ambiente = "homologacao", dataHoraInicial, dataHoraFinal } = req.body ?? {};
+  if (!dataHoraInicial || !dataHoraFinal) {
+    return res.status(400).json({ error: "Informe dataHoraInicial e dataHoraFinal." });
+  }
+
+  const cert = resolveCert(req.body);
+  if (cert.error) return res.status(400).json({ error: cert.error });
+
+  try {
+    const agent = agentFor(cert.pfx, cert.passphrase);
+    const body = nfceEnvelope(
+      ambiente,
+      (tpAmb) =>
+        `<nfceDadosMsg><nfceListagemChaves xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><tpAmb>${tpAmb}</tpAmb><dataHoraInicial>${dataHoraInicial}</dataHoraInicial><dataHoraFinal>${dataHoraFinal}</dataHoraFinal></nfceListagemChaves></nfceDadosMsg>`,
+      "nfceListagemChaves",
+    );
+    const endpoint =
+      (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).chaves;
+    const raw = await callSefaz(body, ambiente, agent, endpoint);
+
+    const chaves = [...raw.matchAll(/<chNFCe>(\d{44})<\/chNFCe>/g)].map((m) => m[1]);
+    return res.json({
+      cStat: tag(raw, "cStat"),
+      xMotivo: tag(raw, "xMotivo"),
+      dhEmisUltNfce: tag(raw, "dhEmisUltNfce"),
+      chaves,
+    });
+  } catch (error) {
+    console.error("[bridge] falha na listagem NFC-e:", error);
+    return res.status(502).json({ error: bridgeError(error) });
+  }
+});
+
+app.post("/nfce/xml", async (req, res) => {
+  const { ambiente = "homologacao", chNFCe } = req.body ?? {};
+  if (!/^\d{44}$/.test(String(chNFCe ?? ""))) {
+    return res.status(400).json({ error: "Chave da NFC-e invalida." });
+  }
+
+  const cert = resolveCert(req.body);
+  if (cert.error) return res.status(400).json({ error: cert.error });
+
+  try {
+    const agent = agentFor(cert.pfx, cert.passphrase);
+    const body = nfceEnvelope(
+      ambiente,
+      (tpAmb) =>
+        `<nfceDadosMsg><nfceDownloadXML xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><tpAmb>${tpAmb}</tpAmb><chNFCe>${chNFCe}</chNFCe></nfceDownloadXML></nfceDadosMsg>`,
+      "nfceDownloadXML",
+    );
+    const endpoint = (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).xml;
+    const raw = await callSefaz(body, ambiente, agent, endpoint);
+
+    // O retorno pode vir com o XML escapado (&lt;nfeProc...) ou embutido direto.
+    const unescaped = raw
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, "&");
+    const procMatch = unescaped.match(/<nfeProc[\s\S]*?<\/nfeProc>/);
+    const nfeMatch = unescaped.match(/<NFe[\s>][\s\S]*?<\/NFe>/);
+    const eventos = [...unescaped.matchAll(/<procEventoNFe[\s\S]*?<\/procEventoNFe>/g)].map(
+      (m) => m[0],
+    );
+
+    return res.json({
+      cStat: tag(raw, "cStat"),
+      xMotivo: tag(raw, "xMotivo"),
+      chNFCe,
+      xml: procMatch ? procMatch[0] : nfeMatch ? nfeMatch[0] : null,
+      eventos,
+    });
+  } catch (error) {
+    console.error("[bridge] falha no download NFC-e:", error);
+    return res.status(502).json({ error: bridgeError(error) });
+  }
+});
+
 app.listen(PORT, () => console.log(`[bridge] ouvindo na porta ${PORT}`));
