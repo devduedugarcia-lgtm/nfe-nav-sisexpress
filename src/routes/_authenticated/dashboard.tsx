@@ -66,6 +66,7 @@ import {
 } from "@/lib/download";
 import {
   clearInvoices,
+  clearNfceBlock,
   clearSefazBlock,
   exportInvoicesZip,
   getInvoiceXml,
@@ -75,6 +76,7 @@ import {
   resetSefazCursor,
   saveSefazAccount,
   searchSefazDemo,
+  syncNfceSP,
   syncSefaz,
   testSefazBridge,
 } from "@/lib/nfe.functions";
