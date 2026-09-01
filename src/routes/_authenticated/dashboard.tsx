@@ -169,6 +169,7 @@ function DashboardPage() {
   const [mode, setMode] = useState<"demo" | "sefaz">("demo");
   const [configOpen, setConfigOpen] = useState(false);
   const [form, setForm] = useState({ cnpj: "", uf: "SP", environment: "homologacao" });
+  const [nfceRange, setNfceRange] = useState(() => periodRange("last-7"));
 
   const session = useQuery({ queryKey: ["session"], queryFn: () => loadSession() });
 
