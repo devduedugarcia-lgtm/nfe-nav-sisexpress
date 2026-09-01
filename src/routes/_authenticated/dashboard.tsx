@@ -136,6 +136,11 @@ function periodRange(preset: string) {
   if (preset === "year") {
     return { from: toInputDate(new Date(today.getFullYear(), 0, 1)), to };
   }
+  if (preset === "last-7") {
+    const start = new Date(today);
+    start.setDate(start.getDate() - 7);
+    return { from: toInputDate(start), to };
+  }
   const start = new Date(today);
   start.setDate(start.getDate() - 30);
   return { from: toInputDate(start), to };
