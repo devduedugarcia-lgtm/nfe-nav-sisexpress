@@ -148,10 +148,12 @@ function DashboardPage() {
   const fetchInvoices = useServerFn(listInvoices);
   const runDemoSearch = useServerFn(searchSefazDemo);
   const runSefazSync = useServerFn(syncSefaz);
+  const runNfceSync = useServerFn(syncNfceSP);
   const loadSefazAccount = useServerFn(getSefazAccount);
   const persistSefazAccount = useServerFn(saveSefazAccount);
   const resetCursor = useServerFn(resetSefazCursor);
   const releaseBlock = useServerFn(clearSefazBlock);
+  const releaseNfceBlock = useServerFn(clearNfceBlock);
   const runBridgeTest = useServerFn(testSefazBridge);
   const fetchXml = useServerFn(getInvoiceXml);
   const exportZip = useServerFn(exportInvoicesZip);
