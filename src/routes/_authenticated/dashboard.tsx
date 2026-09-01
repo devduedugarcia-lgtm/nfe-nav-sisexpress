@@ -264,6 +264,35 @@ function DashboardPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const nfceSync = useMutation({
+    mutationFn: () => runNfceSync({ data: { from: nfceRange.from, to: nfceRange.to } }),
+    onSuccess: (result) => {
+      const resumo = `${result.found} chave(s) no período · ${result.imported} nota(s) gravada(s)${
+        result.skipped > 0 ? ` · ${result.skipped} sem XML utilizável` : ""
+      }`;
+      if (result.imported > 0) toast.success(`${resumo} · ${result.status}`);
+      else toast.info(`${result.status} · ${resumo}`);
+      if (result.blockedUntil) {
+        const libera = new Date(result.blockedUntil).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        toast.info(`Próxima consulta de NFC-e liberada às ${libera}.`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const unblockNfce = useMutation({
+    mutationFn: () => releaseNfceBlock(),
+    onSuccess: () => {
+      toast.success("Bloqueio da NFC-e liberado.");
+      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
 
   const saveAccount = useMutation({
