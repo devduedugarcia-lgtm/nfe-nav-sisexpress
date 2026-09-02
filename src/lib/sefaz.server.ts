@@ -49,6 +49,38 @@ export type CertificateInfo = {
   thumbprint: string | null;
 };
 
+const NOT_PUBLISHED =
+  "O serviço de consulta não está publicado neste endereço (respondeu 404). Faça o deploy da pasta sefaz-bridge no Render e confira a URL cadastrada.";
+
+/** Traduz falhas HTTP do serviço em mensagens úteis para o usuário. */
+function bridgeHttpError(status: number, text: string, fallback: string): string {
+  if (status === 404) return NOT_PUBLISHED;
+  if (status === 401 || status === 403) {
+    return "O serviço recusou o token. Confirme que o BRIDGE_TOKEN do serviço é igual ao cadastrado no app.";
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    return "O serviço não respondeu a tempo (pode estar iniciando no plano gratuito do Render). Tente novamente em alguns segundos.";
+  }
+  try {
+    const parsed = JSON.parse(text) as { error?: string };
+    if (parsed.error) return parsed.error;
+  } catch {
+    /* mantém a mensagem genérica */
+  }
+  return fallback;
+}
+
+/** Erros de rede (serviço fora do ar, DNS, timeout). */
+function bridgeNetworkError(error: unknown): string {
+  const raw = error instanceof Error && error.message ? error.message : "";
+  if (/timeout|timed out|aborted/i.test(raw)) {
+    return "O serviço demorou a responder; tente novamente em alguns segundos.";
+  }
+  return raw
+    ? `Não foi possível alcançar o serviço de consulta: ${raw}`
+    : "Não foi possível alcançar o serviço de consulta.";
+}
+
 /**
  * Valida o par arquivo + senha no serviço (que tem Node/OpenSSL) e devolve os
  * dados do titular. O serviço não grava nada: apenas lê e responde.
@@ -64,26 +96,22 @@ export async function validateCertificateOnBridge(input: {
     );
   }
 
-  const response = await fetch(`${url!.replace(/\/$/, "")}/validar`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token!}` },
-    body: JSON.stringify(input),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${url!.replace(/\/$/, "")}/validar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token!}` },
+      body: JSON.stringify(input),
+    });
+  } catch (error) {
+    throw new Error(bridgeNetworkError(error));
+  }
 
   const text = await response.text();
   if (!response.ok) {
-    let message = `O serviço respondeu ${response.status}`;
-    try {
-      const parsed = JSON.parse(text) as { error?: string };
-      if (parsed.error) message = parsed.error;
-    } catch {
-      /* mantém a mensagem genérica */
-    }
-    if (response.status === 404) {
-      message =
-        "O serviço publicado ainda não tem o endpoint de validação. Atualize o serviço (pasta sefaz-bridge) e tente novamente.";
-    }
-    throw new Error(message);
+    throw new Error(
+      bridgeHttpError(response.status, text, `O serviço respondeu ${response.status}`),
+    );
   }
 
   return JSON.parse(text) as CertificateInfo;
