@@ -332,26 +332,31 @@ async function postBridge<T>(path: string, payload: unknown): Promise<T> {
     );
   }
 
-  const response = await fetch(`${url!.replace(/\/$/, "")}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token!}` },
-    body: JSON.stringify(payload),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${url!.replace(/\/$/, "")}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token!}` },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    throw new Error(bridgeNetworkError(error));
+  }
 
   const text = await response.text();
   if (!response.ok) {
-    let message = `O serviço de consulta respondeu ${response.status}`;
-    try {
-      const parsed = JSON.parse(text) as { error?: string };
-      if (parsed.error) message = parsed.error;
-    } catch {
-      /* mantém a mensagem genérica */
-    }
     if (response.status === 404) {
-      message =
-        "O serviço publicado ainda não tem os endpoints da NFC-e. Faça o deploy da nova versão da pasta sefaz-bridge.";
+      throw new Error(
+        "O serviço publicado não respondeu aos endpoints da NFC-e (404). Faça o deploy da nova versão da pasta sefaz-bridge no Render.",
+      );
     }
-    throw new Error(message);
+    throw new Error(
+      bridgeHttpError(
+        response.status,
+        text,
+        `O serviço de consulta respondeu ${response.status}`,
+      ),
+    );
   }
 
   return JSON.parse(text) as T;
