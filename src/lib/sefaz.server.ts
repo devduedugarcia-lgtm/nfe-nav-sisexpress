@@ -131,7 +131,14 @@ export async function checkBridgeHealth(): Promise<BridgeHealth> {
     const text = await response.text();
 
     if (!response.ok) {
-      return { ok: false, message: `O serviço respondeu ${response.status}. Verifique URL e token.` };
+      return {
+        ok: false,
+        message: bridgeHttpError(
+          response.status,
+          text,
+          `O serviço respondeu ${response.status}. Verifique URL e token.`,
+        ),
+      };
     }
 
     let payload: {
