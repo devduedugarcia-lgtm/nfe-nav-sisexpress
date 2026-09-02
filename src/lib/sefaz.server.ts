@@ -176,13 +176,7 @@ export async function checkBridgeHealth(): Promise<BridgeHealth> {
       certificate,
     };
   } catch (error) {
-    return {
-      ok: false,
-      message:
-        error instanceof Error && error.message
-          ? `Não foi possível alcançar o serviço: ${error.message}`
-          : "Não foi possível alcançar o serviço.",
-    };
+    return { ok: false, message: bridgeNetworkError(error) };
   }
 }
 
