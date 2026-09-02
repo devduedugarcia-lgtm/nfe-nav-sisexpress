@@ -101,6 +101,29 @@ function CertificatePage() {
           da consulta. Cada usuário envia o seu — nada precisa ser configurado manualmente.
         </p>
 
+        {bridge.data && !bridge.data.ok && (
+          <div className="mt-4 flex items-start gap-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+            <div className="space-y-1">
+              <p className="font-medium text-foreground">
+                Serviço de consulta indisponível — o envio do certificado vai falhar
+              </p>
+              <p className="text-muted-foreground">{bridge.data.message}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => bridge.refetch()}
+                disabled={bridge.isFetching}
+              >
+                {bridge.isFetching && <Loader2 className="mr-2 size-4 animate-spin" />}
+                Testar novamente
+              </Button>
+            </div>
+          </div>
+        )}
+
+
         <div className="mt-6 grid gap-6 md:grid-cols-[1.2fr_1fr]">
           <form
             className="space-y-4 rounded-lg border border-border bg-card p-6"
