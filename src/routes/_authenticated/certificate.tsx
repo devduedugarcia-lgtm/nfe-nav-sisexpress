@@ -14,6 +14,7 @@ import {
   deleteCertificate,
   getCertificate,
   getSession,
+  testSefazBridge,
   uploadCertificate,
 } from "@/lib/nfe.functions";
 
