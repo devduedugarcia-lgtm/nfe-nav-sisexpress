@@ -195,25 +195,29 @@ export async function callBridge(input: {
     );
   }
 
-  const response = await fetch(`${url!.replace(/\/$/, "")}/distribuicao`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token!}`,
-    },
-    body: JSON.stringify(input),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${url!.replace(/\/$/, "")}/distribuicao`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token!}`,
+      },
+      body: JSON.stringify(input),
+    });
+  } catch (error) {
+    throw new Error(bridgeNetworkError(error));
+  }
 
   const text = await response.text();
   if (!response.ok) {
-    let message = `O serviço de consulta respondeu ${response.status}`;
-    try {
-      const parsed = JSON.parse(text) as { error?: string };
-      if (parsed.error) message = parsed.error;
-    } catch {
-      /* mantém a mensagem genérica */
-    }
-    throw new Error(message);
+    throw new Error(
+      bridgeHttpError(
+        response.status,
+        text,
+        `O serviço de consulta respondeu ${response.status}`,
+      ),
+    );
   }
 
   return JSON.parse(text) as BridgeResponse;
