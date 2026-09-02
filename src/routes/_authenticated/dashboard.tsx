@@ -216,6 +216,13 @@ function DashboardPage() {
     ? blockedUntil.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
     : null;
 
+  const nfceBlockedUntil = account?.nfce_blocked_until ? new Date(account.nfce_blocked_until) : null;
+  const isNfceBlocked = Boolean(nfceBlockedUntil && nfceBlockedUntil.getTime() > Date.now());
+  const nfceBlockedLabel = nfceBlockedUntil
+    ? nfceBlockedUntil.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : null;
+
+
   const search = useMutation({
     mutationFn: () => runDemoSearch({ data: filters }),
     onSuccess: (result) => {
