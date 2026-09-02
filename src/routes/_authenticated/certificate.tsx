@@ -55,6 +55,7 @@ function CertificatePage() {
   const loadCertificate = useServerFn(getCertificate);
   const sendCertificate = useServerFn(uploadCertificate);
   const removeCertificate = useServerFn(deleteCertificate);
+  const checkBridge = useServerFn(testSefazBridge);
 
   const [fileName, setFileName] = useState("");
   const [password, setPassword] = useState("");
@@ -62,6 +63,7 @@ function CertificatePage() {
 
   const session = useQuery({ queryKey: ["session"], queryFn: () => loadSession() });
   const certificate = useQuery({ queryKey: ["certificate"], queryFn: () => loadCertificate() });
+  const bridge = useQuery({ queryKey: ["bridge-health"], queryFn: () => checkBridge() });
 
   const upload = useMutation({
     mutationFn: async () => {
