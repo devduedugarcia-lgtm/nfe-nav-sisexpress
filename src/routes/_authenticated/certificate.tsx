@@ -14,6 +14,7 @@ import {
   deleteCertificate,
   getCertificate,
   getSession,
+  testSefazBridge,
   uploadCertificate,
 } from "@/lib/nfe.functions";
 
@@ -54,6 +55,7 @@ function CertificatePage() {
   const loadCertificate = useServerFn(getCertificate);
   const sendCertificate = useServerFn(uploadCertificate);
   const removeCertificate = useServerFn(deleteCertificate);
+  const checkBridge = useServerFn(testSefazBridge);
 
   const [fileName, setFileName] = useState("");
   const [password, setPassword] = useState("");
@@ -61,6 +63,7 @@ function CertificatePage() {
 
   const session = useQuery({ queryKey: ["session"], queryFn: () => loadSession() });
   const certificate = useQuery({ queryKey: ["certificate"], queryFn: () => loadCertificate() });
+  const bridge = useQuery({ queryKey: ["bridge-health"], queryFn: () => checkBridge() });
 
   const upload = useMutation({
     mutationFn: async () => {
@@ -97,6 +100,29 @@ function CertificatePage() {
           e senha são validados no envio e guardados cifrados; usamos apenas no servidor, no momento
           da consulta. Cada usuário envia o seu — nada precisa ser configurado manualmente.
         </p>
+
+        {bridge.data && !bridge.data.ok && (
+          <div className="mt-4 flex items-start gap-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+            <div className="space-y-1">
+              <p className="font-medium text-foreground">
+                Serviço de consulta indisponível — o envio do certificado vai falhar
+              </p>
+              <p className="text-muted-foreground">{bridge.data.message}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => bridge.refetch()}
+                disabled={bridge.isFetching}
+              >
+                {bridge.isFetching && <Loader2 className="mr-2 size-4 animate-spin" />}
+                Testar novamente
+              </Button>
+            </div>
+          </div>
+        )}
+
 
         <div className="mt-6 grid gap-6 md:grid-cols-[1.2fr_1fr]">
           <form

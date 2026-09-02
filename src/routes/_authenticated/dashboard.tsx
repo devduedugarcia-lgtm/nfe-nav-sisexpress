@@ -216,6 +216,13 @@ function DashboardPage() {
     ? blockedUntil.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
     : null;
 
+  const nfceBlockedUntil = account?.nfce_blocked_until ? new Date(account.nfce_blocked_until) : null;
+  const isNfceBlocked = Boolean(nfceBlockedUntil && nfceBlockedUntil.getTime() > Date.now());
+  const nfceBlockedLabel = nfceBlockedUntil
+    ? nfceBlockedUntil.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    : null;
+
+
   const search = useMutation({
     mutationFn: () => runDemoSearch({ data: filters }),
     onSuccess: (result) => {
@@ -570,6 +577,72 @@ function DashboardPage() {
               )}
             </div>
           </div>
+
+          {mode === "sefaz" && (
+            <div className="mt-4 grid gap-3 rounded-md border border-border bg-muted/40 p-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+              <div className="space-y-2">
+                <Label htmlFor="nfce-from">NFC-e emitidas (SP) · de</Label>
+                <Input
+                  id="nfce-from"
+                  type="date"
+                  value={nfceRange.from}
+                  onChange={(event) =>
+                    setNfceRange((current) => ({ ...current, from: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nfce-to">Até</Label>
+                <Input
+                  id="nfce-to"
+                  type="date"
+                  value={nfceRange.to}
+                  onChange={(event) =>
+                    setNfceRange((current) => ({ ...current, to: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Button
+                  className="w-full"
+                  variant="secondary"
+                  onClick={() => nfceSync.mutate()}
+                  disabled={
+                    nfceSync.isPending || !account || !bridgeConfigured || isNfceBlocked
+                  }
+                >
+                  {nfceSync.isPending ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : (
+                    <CloudDownload className="mr-2 size-4" />
+                  )}
+                  {isNfceBlocked
+                    ? `NFC-e disponível às ${nfceBlockedLabel}`
+                    : "Sincronizar NFC-e (SP)"}
+                </Button>
+                {isNfceBlocked && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => unblockNfce.mutate()}
+                    disabled={unblockNfce.isPending}
+                  >
+                    {unblockNfce.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+                    Liberar consulta agora
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground md:col-span-3">
+                Período máximo de 100 dias (limite da SEFAZ-SP).
+                {account?.nfce_last_sync_at
+                  ? ` Última sincronização de NFC-e em ${formatDateTime(account.nfce_last_sync_at)}${
+                      account.nfce_last_status ? ` · ${account.nfce_last_status}` : ""
+                    }.`
+                  : ""}
+              </p>
+            </div>
+          )}
+
 
           {mode === "sefaz" && (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 p-3 text-sm">
