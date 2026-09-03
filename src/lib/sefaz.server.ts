@@ -1,4 +1,6 @@
 // Helpers server-only: chamada da ponte Node.js e leitura dos XMLs da SEFAZ.
+import { createHash } from "node:crypto";
+
 
 export type BridgeDoc = { nsu: number; schema: string; xml: string };
 
@@ -30,14 +32,15 @@ export type ParsedInvoice = {
 };
 
 export function bridgeConfig() {
-  const configuredUrl = process.env["SEFAZ_BRIDGE_URL"];
+  const configuredUrl = process.env["SEFAZ_BRIDGE_URL"]?.trim().replace(/\/+$/, "");
   // Compatibilidade com o endereço anterior: o segredo pode continuar apontando
   // para ele até ser atualizado no cofre, mas o app já usa a ponte publicada.
   const url = configuredUrl?.includes("sefaz-bridge-a33m.onrender.com")
     ? "https://nfe-nav-sisexpress-3.onrender.com"
     : configuredUrl;
-  const token = process.env["SEFAZ_BRIDGE_TOKEN"];
+  const token = process.env["SEFAZ_BRIDGE_TOKEN"]?.trim();
   return { url: url ?? null, token: token ?? null, configured: Boolean(url && token) };
+
 }
 
 export type BridgeHealth = {
@@ -61,8 +64,13 @@ const NOT_PUBLISHED =
 function bridgeHttpError(status: number, text: string, fallback: string): string {
   if (status === 404) return NOT_PUBLISHED;
   if (status === 401 || status === 403) {
-    return "O serviço recusou o token. Confirme que o BRIDGE_TOKEN do serviço é igual ao cadastrado no app.";
+    const app = bridgeConfig().token;
+    const hint = app
+      ? ` Impressão do token cadastrado no app: ${createHash("sha256").update(app).digest("hex").slice(0, 8)}.`
+      : "";
+    return `O serviço recusou o token. Copie o mesmo valor para a variável BRIDGE_TOKEN no Render e para o segredo SEFAZ_BRIDGE_TOKEN no app, e refaça o deploy do serviço.${hint}`;
   }
+
   if (status === 502 || status === 503 || status === 504) {
     return "O serviço não respondeu a tempo (pode estar iniciando no plano gratuito do Render). Tente novamente em alguns segundos.";
   }
