@@ -30,14 +30,15 @@ export type ParsedInvoice = {
 };
 
 export function bridgeConfig() {
-  const configuredUrl = process.env["SEFAZ_BRIDGE_URL"];
+  const configuredUrl = process.env["SEFAZ_BRIDGE_URL"]?.trim().replace(/\/+$/, "");
   // Compatibilidade com o endereço anterior: o segredo pode continuar apontando
   // para ele até ser atualizado no cofre, mas o app já usa a ponte publicada.
   const url = configuredUrl?.includes("sefaz-bridge-a33m.onrender.com")
     ? "https://nfe-nav-sisexpress-3.onrender.com"
     : configuredUrl;
-  const token = process.env["SEFAZ_BRIDGE_TOKEN"];
+  const token = process.env["SEFAZ_BRIDGE_TOKEN"]?.trim();
   return { url: url ?? null, token: token ?? null, configured: Boolean(url && token) };
+
 }
 
 export type BridgeHealth = {
