@@ -160,6 +160,7 @@ export async function checkBridgeHealth(): Promise<BridgeHealth> {
       certificate?: { subject?: string | null; validUntil?: string | null } | null;
       certLoaded?: boolean;
       certValidUntil?: string | null;
+      tokenFingerprint?: string;
     } = {};
     try {
       payload = JSON.parse(text) as typeof payload;
@@ -172,6 +173,15 @@ export async function checkBridgeHealth(): Promise<BridgeHealth> {
       (payload.certLoaded === undefined
         ? null
         : { subject: null, validUntil: payload.certValidUntil ?? null });
+
+    const appTokenFingerprint = createHash("sha256").update(token!).digest("hex").slice(0, 8);
+    if (payload.tokenFingerprint && payload.tokenFingerprint !== appTokenFingerprint) {
+      return {
+        ok: false,
+        message: `O serviço está acessível, mas o token é diferente. Render: ${payload.tokenFingerprint}; app: ${appTokenFingerprint}.`,
+        certificate,
+      };
+    }
 
     if (payload.ok === false || payload.certLoaded === false) {
       return {
