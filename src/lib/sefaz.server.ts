@@ -1,4 +1,6 @@
 // Helpers server-only: chamada da ponte Node.js e leitura dos XMLs da SEFAZ.
+import { createHash } from "node:crypto";
+
 
 export type BridgeDoc = { nsu: number; schema: string; xml: string };
 
