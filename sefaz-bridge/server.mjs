@@ -29,7 +29,7 @@ const CERT_PASSWORD = process.env.CERT_PASSWORD;
 if (!BRIDGE_TOKEN) throw new Error("BRIDGE_TOKEN nao configurado");
 
 function tokenFingerprint() {
-  return crypto.createHash("sha256").update(BRIDGE_TOKEN.trim()).digest("hex").slice(0, 8);
+  return createHash("sha256").update(BRIDGE_TOKEN.trim()).digest("hex").slice(0, 8);
 }
 
 /** Explica erros comuns de certificado em linguagem util. */
@@ -242,8 +242,8 @@ app.use(express.json({ limit: "8mb" }));
 
 app.use((req, res, next) => {
   if (req.path === "/health") return next();
-  const header = req.headers.authorization ?? "";
-  if (header !== `Bearer ${BRIDGE_TOKEN}`) {
+  const header = (req.headers.authorization ?? "").trim();
+  if (header !== `Bearer ${BRIDGE_TOKEN.trim()}`) {
     return res.status(401).json({
       error:
         "Nao autorizado: o BRIDGE_TOKEN deste servico e diferente do token cadastrado no app. Impressao do token esperado: " +
