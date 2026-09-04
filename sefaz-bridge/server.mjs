@@ -64,6 +64,25 @@ if ((CERT_PFX_PATH || CERT_PFX_BASE64) && CERT_PASSWORD) {
 }
 
 // ---------------------------------------------------------------------------
+// Cadeia ICP-Brasil: alguns webservices (ex.: nfce.fazenda.sp.gov.br) enviam
+// apenas o certificado do servidor, sem os intermediarios. Sem a cadeia local
+// o Node falha com "unable to get local issuer certificate".
+// ---------------------------------------------------------------------------
+const ICP_CHAIN = (() => {
+  try {
+    const pem = readFileSync(new URL("./certs/icp-brasil-chain.pem", import.meta.url), "utf8");
+    const certs = pem.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) ?? [];
+    if (!certs.length) console.warn("[bridge] cadeia ICP-Brasil vazia");
+    return certs;
+  } catch (error) {
+    console.warn("[bridge] cadeia ICP-Brasil nao carregada:", error?.message ?? error);
+    return [];
+  }
+})();
+
+const TRUSTED_CA = [...tls.rootCertificates, ...ICP_CHAIN];
+
+// ---------------------------------------------------------------------------
 // Agentes mTLS por certificado, com cache curto em memoria
 // ---------------------------------------------------------------------------
 const AGENT_TTL_MS = 10 * 60 * 1000;
@@ -91,10 +110,12 @@ function agentFor(pfx, passphrase) {
     keepAlive: true,
     rejectUnauthorized: true,
     minVersion: "TLSv1.2",
+    ca: TRUSTED_CA,
   });
   agentCache.set(key, { agent, expiresAt: now + AGENT_TTL_MS });
   return agent;
 }
+
 
 /** Le titular, CNPJ e validade de um .pfx usando node-forge (sem gravar nada). */
 function inspectCertificate(pfx, passphrase) {
