@@ -191,13 +191,16 @@ export async function checkBridgeHealth(): Promise<BridgeHealth> {
       };
     }
 
-    if (payload.ok === false || payload.certLoaded === false) {
+    // No modo dinâmico o certificado é enviado em cada consulta, então
+    // `certLoaded: false` é o estado normal e não indica falha.
+    if (payload.ok === false) {
       return {
         ok: false,
-        message: payload.message ?? "Serviço acessível, mas o certificado digital não foi carregado.",
+        message: payload.message ?? "O serviço de consulta respondeu, mas indicou falha interna.",
         certificate,
       };
     }
+
 
     return {
       ok: true,
