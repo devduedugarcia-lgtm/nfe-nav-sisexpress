@@ -78,10 +78,17 @@ function bridgeHttpError(status: number, text: string, fallback: string): string
     );
   }
 
-
   if (status === 502 || status === 503 || status === 504) {
+    // A ponte devolve 502 com o motivo real vindo da SEFAZ; preserve essa mensagem.
+    try {
+      const parsed = JSON.parse(text) as { error?: string };
+      if (parsed.error) return `SEFAZ: ${parsed.error}`;
+    } catch {
+      /* sem corpo JSON: provavelmente serviço iniciando */
+    }
     return "O serviço não respondeu a tempo (pode estar iniciando no plano gratuito do Render). Tente novamente em alguns segundos.";
   }
+
   try {
     const parsed = JSON.parse(text) as { error?: string };
     if (parsed.error) return parsed.error;
