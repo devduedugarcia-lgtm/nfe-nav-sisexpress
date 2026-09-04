@@ -60,11 +60,24 @@ function bridgeHttpError(status: number, text: string, fallback: string): string
   if (status === 404) return NOT_PUBLISHED;
   if (status === 401 || status === 403) {
     const app = bridgeConfig().token;
-    const hint = app
-      ? ` Impressão do token cadastrado no app: ${createHash("sha256").update(app).digest("hex").slice(0, 8)}.`
-      : "";
-    return `O serviço recusou o token. Copie o mesmo valor para a variável BRIDGE_TOKEN no Render e para o segredo SEFAZ_BRIDGE_TOKEN no app, e refaça o deploy do serviço.${hint}`;
+    const appFp = app ? createHash("sha256").update(app).digest("hex").slice(0, 8) : null;
+    const serviceFp = /([0-9a-f]{8})\.?\s*$/i.exec(text ?? "")?.[1]?.toLowerCase() ?? null;
+    if (appFp && serviceFp && serviceFp !== appFp) {
+      return `O serviço está com um token diferente do app (serviço: ${serviceFp}, app: ${appFp}). Deixe os dois com o mesmo valor e refaça o deploy do serviço.`;
+    }
+    const parsedMessage = (() => {
+      try {
+        return (JSON.parse(text) as { error?: string }).error ?? null;
+      } catch {
+        return null;
+      }
+    })();
+    return (
+      parsedMessage ??
+      `Acesso recusado pelo serviço de consulta.${appFp ? ` Impressão do token do app: ${appFp}.` : ""}`
+    );
   }
+
 
   if (status === 502 || status === 503 || status === 504) {
     return "O serviço não respondeu a tempo (pode estar iniciando no plano gratuito do Render). Tente novamente em alguns segundos.";
