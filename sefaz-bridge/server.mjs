@@ -220,7 +220,7 @@ function parseDocs(xml) {
 
 const SEFAZ_TIMEOUT_MS = 12_000;
 
-async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta") {
+async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta", soapAction) {
   const url = endpoint ?? ENDPOINTS[ambiente] ?? ENDPOINTS.homologacao;
   const target = new URL(url);
 
@@ -231,18 +231,23 @@ async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta") {
       settled = true;
       callback(value);
     };
+    const headers = {
+      "Content-Type": soapAction
+        ? `application/soap+xml; charset=utf-8; action="${soapAction}"`
+        : "application/soap+xml; charset=utf-8",
+      "Content-Length": Buffer.byteLength(body),
+    };
+    if (soapAction) headers["SOAPAction"] = `"${soapAction}"`;
     const request = https.request(
       {
         agent,
         hostname: target.hostname,
         path: target.pathname,
         method: "POST",
-        headers: {
-          "Content-Type": "application/soap+xml; charset=utf-8",
-          "Content-Length": Buffer.byteLength(body),
-        },
+        headers,
         timeout: SEFAZ_TIMEOUT_MS,
       },
+
       (response) => {
         let text = "";
         response.setEncoding("utf8");
