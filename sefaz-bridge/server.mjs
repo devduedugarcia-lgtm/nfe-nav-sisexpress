@@ -220,7 +220,7 @@ function parseDocs(xml) {
 
 const SEFAZ_TIMEOUT_MS = 12_000;
 
-async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta") {
+async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta", soapAction) {
   const url = endpoint ?? ENDPOINTS[ambiente] ?? ENDPOINTS.homologacao;
   const target = new URL(url);
 
@@ -231,18 +231,23 @@ async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta") {
       settled = true;
       callback(value);
     };
+    const headers = {
+      "Content-Type": soapAction
+        ? `application/soap+xml; charset=utf-8; action="${soapAction}"`
+        : "application/soap+xml; charset=utf-8",
+      "Content-Length": Buffer.byteLength(body),
+    };
+    if (soapAction) headers["SOAPAction"] = `"${soapAction}"`;
     const request = https.request(
       {
         agent,
         hostname: target.hostname,
         path: target.pathname,
         method: "POST",
-        headers: {
-          "Content-Type": "application/soap+xml; charset=utf-8",
-          "Content-Length": Buffer.byteLength(body),
-        },
+        headers,
         timeout: SEFAZ_TIMEOUT_MS,
       },
+
       (response) => {
         let text = "";
         response.setEncoding("utf8");
@@ -405,10 +410,17 @@ function resolveCert(body) {
   return { error: "Nenhum certificado informado na chamada e nenhum de teste configurado." };
 }
 
-function nfceEnvelope(ambiente, inner, action) {
+const NFCE_WSDL_NS = "http://www.portalfiscal.inf.br/nfe/wsdl";
+
+function nfceEnvelope(ambiente, inner, operation, service) {
   const tpAmb = ambiente === "producao" ? 1 : 2;
-  return `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><${action} xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/${action}">${inner(tpAmb)}</${action}></soap12:Body></soap12:Envelope>`;
+  return `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><${operation} xmlns="${NFCE_WSDL_NS}/${service}">${inner(tpAmb)}</${operation}></soap12:Body></soap12:Envelope>`;
 }
+
+function nfceAction(service, operation) {
+  return `${NFCE_WSDL_NS}/${service}/${operation}`;
+}
+
 
 function bridgeError(error) {
   const raw = error instanceof Error ? error.message : "Falha na SEFAZ";
@@ -433,10 +445,19 @@ app.post("/nfce/chaves", async (req, res) => {
       (tpAmb) =>
         `<nfceDadosMsg><nfceListagemChaves xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><tpAmb>${tpAmb}</tpAmb><dataHoraInicial>${dataHoraInicial}</dataHoraInicial><dataHoraFinal>${dataHoraFinal}</dataHoraFinal></nfceListagemChaves></nfceDadosMsg>`,
       "nfceListagemChaves",
+      "NFCeListagemChaves",
     );
     const endpoint =
       (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).chaves;
-    const raw = await callSefaz(body, ambiente, agent, endpoint, "listagem de chaves NFC-e");
+    const raw = await callSefaz(
+      body,
+      ambiente,
+      agent,
+      endpoint,
+      "listagem de chaves NFC-e",
+      nfceAction("NFCeListagemChaves", "nfceListagemChaves"),
+    );
+
 
     const chaves = [...raw.matchAll(/<chNFCe>(\d{44})<\/chNFCe>/g)].map((m) => m[1]);
     return res.json({
@@ -467,9 +488,18 @@ app.post("/nfce/xml", async (req, res) => {
       (tpAmb) =>
         `<nfceDadosMsg><nfceDownloadXML xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><tpAmb>${tpAmb}</tpAmb><chNFCe>${chNFCe}</chNFCe></nfceDownloadXML></nfceDadosMsg>`,
       "nfceDownloadXML",
+      "NFCeDownloadXML",
     );
     const endpoint = (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).xml;
-    const raw = await callSefaz(body, ambiente, agent, endpoint, "download do XML da NFC-e");
+    const raw = await callSefaz(
+      body,
+      ambiente,
+      agent,
+      endpoint,
+      "download do XML da NFC-e",
+      nfceAction("NFCeDownloadXML", "nfceDownloadXML"),
+    );
+
 
     // O retorno pode vir com o XML escapado (&lt;nfeProc...) ou embutido direto.
     const unescaped = raw
