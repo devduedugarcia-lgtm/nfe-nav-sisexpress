@@ -488,9 +488,18 @@ app.post("/nfce/xml", async (req, res) => {
       (tpAmb) =>
         `<nfceDadosMsg><nfceDownloadXML xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><tpAmb>${tpAmb}</tpAmb><chNFCe>${chNFCe}</chNFCe></nfceDownloadXML></nfceDadosMsg>`,
       "nfceDownloadXML",
+      "NFCeDownloadXML",
     );
     const endpoint = (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).xml;
-    const raw = await callSefaz(body, ambiente, agent, endpoint, "download do XML da NFC-e");
+    const raw = await callSefaz(
+      body,
+      ambiente,
+      agent,
+      endpoint,
+      "download do XML da NFC-e",
+      nfceAction("NFCeDownloadXML", "nfceDownloadXML"),
+    );
+
 
     // O retorno pode vir com o XML escapado (&lt;nfeProc...) ou embutido direto.
     const unescaped = raw
