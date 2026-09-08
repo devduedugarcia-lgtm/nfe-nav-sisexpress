@@ -82,10 +82,16 @@ function bridgeHttpError(status: number, text: string, fallback: string): string
     // A ponte devolve 502 com o motivo real vindo da SEFAZ; preserve essa mensagem.
     try {
       const parsed = JSON.parse(text) as { error?: string };
-      if (parsed.error) return `SEFAZ: ${parsed.error}`;
+      if (parsed.error) {
+        if (/local issuer certificate|unable to verify|self.signed/i.test(parsed.error)) {
+          return "O serviço de consulta não reconheceu a cadeia de certificados da SEFAZ-SP. Publique novamente o serviço (pasta sefaz-bridge) para incluir a cadeia oficial ICP-Brasil.";
+        }
+        return `SEFAZ: ${parsed.error}`;
+      }
     } catch {
       /* sem corpo JSON: provavelmente serviço iniciando */
     }
+
     return "O serviço não respondeu a tempo (pode estar iniciando no plano gratuito do Render). Tente novamente em alguns segundos.";
   }
 
