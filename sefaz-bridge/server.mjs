@@ -410,10 +410,17 @@ function resolveCert(body) {
   return { error: "Nenhum certificado informado na chamada e nenhum de teste configurado." };
 }
 
-function nfceEnvelope(ambiente, inner, action) {
+const NFCE_WSDL_NS = "http://www.portalfiscal.inf.br/nfe/wsdl";
+
+function nfceEnvelope(ambiente, inner, operation, service) {
   const tpAmb = ambiente === "producao" ? 1 : 2;
-  return `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><${action} xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/${action}">${inner(tpAmb)}</${action}></soap12:Body></soap12:Envelope>`;
+  return `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><${operation} xmlns="${NFCE_WSDL_NS}/${service}">${inner(tpAmb)}</${operation}></soap12:Body></soap12:Envelope>`;
 }
+
+function nfceAction(service, operation) {
+  return `${NFCE_WSDL_NS}/${service}/${operation}`;
+}
+
 
 function bridgeError(error) {
   const raw = error instanceof Error ? error.message : "Falha na SEFAZ";
