@@ -218,12 +218,19 @@ function parseDocs(xml) {
   return docs;
 }
 
-async function callSefaz(body, ambiente, agent, endpoint) {
+const SEFAZ_TIMEOUT_MS = 12_000;
+
+async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta") {
   const url = endpoint ?? ENDPOINTS[ambiente] ?? ENDPOINTS.homologacao;
   const target = new URL(url);
 
-
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      callback(value);
+    };
     const request = https.request(
       {
         agent,
@@ -234,7 +241,7 @@ async function callSefaz(body, ambiente, agent, endpoint) {
           "Content-Type": "application/soap+xml; charset=utf-8",
           "Content-Length": Buffer.byteLength(body),
         },
-        timeout: 60_000,
+        timeout: SEFAZ_TIMEOUT_MS,
       },
       (response) => {
         let text = "";
@@ -244,16 +251,30 @@ async function callSefaz(body, ambiente, agent, endpoint) {
         });
         response.on("end", () => {
           if ((response.statusCode ?? 500) >= 400) {
-            reject(new Error(`SEFAZ respondeu ${response.statusCode}: ${text.slice(0, 400)}`));
+            finish(
+              reject,
+              new Error(
+                `${stage}: SEFAZ-SP respondeu HTTP ${response.statusCode}: ${text.slice(0, 400)}`,
+              ),
+            );
             return;
           }
-          resolve(text);
+          finish(resolve, text);
         });
+        response.on("aborted", () =>
+          finish(reject, new Error(`${stage}: a SEFAZ-SP encerrou a resposta antes de concluí-la.`)),
+        );
       },
     );
 
-    request.on("timeout", () => request.destroy(new Error("Tempo esgotado na SEFAZ")));
-    request.on("error", reject);
+    request.on("timeout", () => {
+      request.destroy(
+        new Error(
+          `${stage}: a SEFAZ-SP não respondeu em ${SEFAZ_TIMEOUT_MS / 1000} segundos. Tente novamente mais tarde.`,
+        ),
+      );
+    });
+    request.on("error", (error) => finish(reject, error));
     request.end(body);
   });
 }
@@ -341,7 +362,7 @@ app.post("/distribuicao", async (req, res) => {
   try {
     const agent = agentFor(pfx, passphrase);
     const envelope = buildEnvelope({ cnpj, uf, ambiente, ultNSU });
-    const raw = await callSefaz(envelope, ambiente, agent);
+    const raw = await callSefaz(envelope, ambiente, agent, undefined, "distribuição de NF-e");
 
     const cStat = tag(raw, "cStat");
     const xMotivo = tag(raw, "xMotivo");
@@ -415,7 +436,7 @@ app.post("/nfce/chaves", async (req, res) => {
     );
     const endpoint =
       (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).chaves;
-    const raw = await callSefaz(body, ambiente, agent, endpoint);
+    const raw = await callSefaz(body, ambiente, agent, endpoint, "listagem de chaves NFC-e");
 
     const chaves = [...raw.matchAll(/<chNFCe>(\d{44})<\/chNFCe>/g)].map((m) => m[1]);
     return res.json({
@@ -448,7 +469,7 @@ app.post("/nfce/xml", async (req, res) => {
       "nfceDownloadXML",
     );
     const endpoint = (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).xml;
-    const raw = await callSefaz(body, ambiente, agent, endpoint);
+    const raw = await callSefaz(body, ambiente, agent, endpoint, "download do XML da NFC-e");
 
     // O retorno pode vir com o XML escapado (&lt;nfeProc...) ou embutido direto.
     const unescaped = raw
