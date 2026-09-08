@@ -92,7 +92,7 @@ function bridgeHttpError(status: number, text: string, fallback: string): string
       /* sem corpo JSON: provavelmente serviço iniciando */
     }
 
-    return "O serviço não respondeu a tempo (pode estar iniciando no plano gratuito do Render). Tente novamente em alguns segundos.";
+    return "A consulta externa terminou sem uma mensagem detalhada. O serviço está no ar, mas a SEFAZ-SP não concluiu a resposta; tente novamente com um período menor.";
   }
 
   try {
