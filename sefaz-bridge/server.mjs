@@ -445,10 +445,19 @@ app.post("/nfce/chaves", async (req, res) => {
       (tpAmb) =>
         `<nfceDadosMsg><nfceListagemChaves xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><tpAmb>${tpAmb}</tpAmb><dataHoraInicial>${dataHoraInicial}</dataHoraInicial><dataHoraFinal>${dataHoraFinal}</dataHoraFinal></nfceListagemChaves></nfceDadosMsg>`,
       "nfceListagemChaves",
+      "NFCeListagemChaves",
     );
     const endpoint =
       (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).chaves;
-    const raw = await callSefaz(body, ambiente, agent, endpoint, "listagem de chaves NFC-e");
+    const raw = await callSefaz(
+      body,
+      ambiente,
+      agent,
+      endpoint,
+      "listagem de chaves NFC-e",
+      nfceAction("NFCeListagemChaves", "nfceListagemChaves"),
+    );
+
 
     const chaves = [...raw.matchAll(/<chNFCe>(\d{44})<\/chNFCe>/g)].map((m) => m[1]);
     return res.json({
