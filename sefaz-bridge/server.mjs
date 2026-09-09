@@ -259,13 +259,14 @@ async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta", so
             finish(
               reject,
               new Error(
-                `${stage}: SEFAZ-SP respondeu HTTP ${response.statusCode}: ${text.slice(0, 400)}`,
+                `${stage}: SEFAZ-SP respondeu HTTP ${response.statusCode}: ${soapFaultText(text)}`,
               ),
             );
             return;
           }
           finish(resolve, text);
         });
+
         response.on("aborted", () =>
           finish(reject, new Error(`${stage}: a SEFAZ-SP encerrou a resposta antes de concluí-la.`)),
         );
