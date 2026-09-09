@@ -220,6 +220,34 @@ function parseDocs(xml) {
 
 const SEFAZ_TIMEOUT_MS = 12_000;
 
+/**
+ * Extrai o motivo real de uma resposta de erro. SOAP 1.2 usa
+ * `soap:Reason/soap:Text`, SOAP 1.1 usa `faultstring`. Sem fault, devolve o
+ * corpo cru limitado, para nao esconder a causa.
+ */
+function soapFaultText(text) {
+  const raw = String(text ?? "");
+  const reason =
+    /<[^:>]*:?Text[^>]*>([\s\S]*?)<\/[^:>]*:?Text>/i.exec(raw)?.[1] ??
+    /<faultstring[^>]*>([\s\S]*?)<\/faultstring>/i.exec(raw)?.[1] ??
+    null;
+  const detail = /<[^:>]*:?Detail[^>]*>([\s\S]*?)<\/[^:>]*:?Detail>/i.exec(raw)?.[1] ?? null;
+  const clean = (value) =>
+    value
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ")
+      .trim();
+  if (reason) {
+    const extra = detail ? ` (${clean(detail)})` : "";
+    return `${clean(reason)}${extra}`.slice(0, 1200);
+  }
+  return raw.slice(0, 1200);
+}
+
+
 async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta", soapAction) {
   const url = endpoint ?? ENDPOINTS[ambiente] ?? ENDPOINTS.homologacao;
   const target = new URL(url);
