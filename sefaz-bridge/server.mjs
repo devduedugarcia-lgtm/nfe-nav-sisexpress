@@ -556,3 +556,80 @@ app.post("/nfce/xml", async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`[bridge] ouvindo na porta ${PORT}`));
+
+// ---------------------------------------------------------------------------
+// Diagnostico: le a definicao oficial (WSDL) dos dois servicos de SP usando o
+// certificado da empresa. O endpoint da SEFAZ-SP exige mTLS ate para o WSDL,
+// por isso essa leitura precisa acontecer aqui e nao no app.
+// ---------------------------------------------------------------------------
+function httpsGetText(url, agent) {
+  const target = new URL(url);
+  return new Promise((resolve, reject) => {
+    const request = https.request(
+      {
+        agent,
+        hostname: target.hostname,
+        path: `${target.pathname}${target.search}`,
+        method: "GET",
+        headers: { Accept: "text/xml,*/*" },
+        timeout: SEFAZ_TIMEOUT_MS,
+      },
+      (response) => {
+        let text = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          text += chunk;
+        });
+        response.on("end", () => resolve({ status: response.statusCode ?? 0, text }));
+      },
+    );
+    request.on("timeout", () => request.destroy(new Error("WSDL: tempo esgotado")));
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+/** Resume o WSDL: namespace, operacoes, acoes SOAP e versoes suportadas. */
+function summarizeWsdl(text) {
+  const targetNamespace = /targetNamespace="([^"]+)"/.exec(text)?.[1] ?? null;
+  const operations = [...new Set([...text.matchAll(/<(?:\w+:)?operation\s+name="([^"]+)"/g)].map((m) => m[1]))];
+  const soapActions = [...new Set([...text.matchAll(/soapAction="([^"]*)"/g)].map((m) => m[1]))];
+  const elements = [...new Set([...text.matchAll(/<(?:\w+:)?element\s+name="([^"]+)"/g)].map((m) => m[1]))];
+  const bindings = [...new Set([...text.matchAll(/<(?:\w+:)?binding\s+name="([^"]+)"/g)].map((m) => m[1]))];
+  const soap11 = /xmlns:\w+="http:\/\/schemas\.xmlsoap\.org\/wsdl\/soap\/"/.test(text);
+  const soap12 = /xmlns:\w+="http:\/\/schemas\.xmlsoap\.org\/wsdl\/soap12\/"/.test(text);
+  return {
+    targetNamespace,
+    operations,
+    soapActions,
+    elements: elements.slice(0, 40),
+    bindings,
+    soapVersions: [soap11 ? "1.1" : null, soap12 ? "1.2" : null].filter(Boolean),
+  };
+}
+
+app.post("/nfce/wsdl", async (req, res) => {
+  const { ambiente = "producao" } = req.body ?? {};
+  const cert = resolveCert(req.body);
+  if (cert.error) return res.status(400).json({ error: cert.error });
+
+  try {
+    const agent = agentFor(cert.pfx, cert.passphrase);
+    const endpoints = NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.producao;
+    const out = {};
+    for (const [name, url] of Object.entries(endpoints)) {
+      const { status, text } = await httpsGetText(`${url}?wsdl`, agent);
+      out[name] = {
+        url,
+        status,
+        ...(status === 200 && /wsdl/i.test(text)
+          ? summarizeWsdl(text)
+          : { body: text.slice(0, 800) }),
+      };
+    }
+    return res.json({ ambiente, servicos: out });
+  } catch (error) {
+    console.error("[bridge] falha ao ler WSDL NFC-e:", error);
+    return res.status(502).json({ error: bridgeError(error) });
+  }
+});
