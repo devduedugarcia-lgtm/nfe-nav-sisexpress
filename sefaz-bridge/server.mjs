@@ -248,7 +248,15 @@ function soapFaultText(text) {
 }
 
 
-async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta", soapAction) {
+async function callSefaz(
+  body,
+  ambiente,
+  agent,
+  endpoint,
+  stage = "consulta",
+  soapAction,
+  soapVersion = "1.2",
+) {
   const url = endpoint ?? ENDPOINTS[ambiente] ?? ENDPOINTS.homologacao;
   const target = new URL(url);
 
@@ -259,13 +267,21 @@ async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta", so
       settled = true;
       callback(value);
     };
-    const headers = {
-      "Content-Type": soapAction
-        ? `application/soap+xml; charset=utf-8; action="${soapAction}"`
-        : "application/soap+xml; charset=utf-8",
-      "Content-Length": Buffer.byteLength(body),
-    };
-    if (soapAction) headers["SOAPAction"] = `"${soapAction}"`;
+    const headers =
+      soapVersion === "1.1"
+        ? {
+            "Content-Type": "text/xml; charset=utf-8",
+            "Content-Length": Buffer.byteLength(body),
+            SOAPAction: `"${soapAction ?? ""}"`,
+          }
+        : {
+            "Content-Type": soapAction
+              ? `application/soap+xml; charset=utf-8; action="${soapAction}"`
+              : "application/soap+xml; charset=utf-8",
+            "Content-Length": Buffer.byteLength(body),
+          };
+    if (soapVersion !== "1.1" && soapAction) headers["SOAPAction"] = `"${soapAction}"`;
+
     const request = https.request(
       {
         agent,
