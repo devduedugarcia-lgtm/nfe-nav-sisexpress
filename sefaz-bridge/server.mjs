@@ -248,7 +248,15 @@ function soapFaultText(text) {
 }
 
 
-async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta", soapAction) {
+async function callSefaz(
+  body,
+  ambiente,
+  agent,
+  endpoint,
+  stage = "consulta",
+  soapAction,
+  soapVersion = "1.2",
+) {
   const url = endpoint ?? ENDPOINTS[ambiente] ?? ENDPOINTS.homologacao;
   const target = new URL(url);
 
@@ -259,13 +267,21 @@ async function callSefaz(body, ambiente, agent, endpoint, stage = "consulta", so
       settled = true;
       callback(value);
     };
-    const headers = {
-      "Content-Type": soapAction
-        ? `application/soap+xml; charset=utf-8; action="${soapAction}"`
-        : "application/soap+xml; charset=utf-8",
-      "Content-Length": Buffer.byteLength(body),
-    };
-    if (soapAction) headers["SOAPAction"] = `"${soapAction}"`;
+    const headers =
+      soapVersion === "1.1"
+        ? {
+            "Content-Type": "text/xml; charset=utf-8",
+            "Content-Length": Buffer.byteLength(body),
+            SOAPAction: `"${soapAction ?? ""}"`,
+          }
+        : {
+            "Content-Type": soapAction
+              ? `application/soap+xml; charset=utf-8; action="${soapAction}"`
+              : "application/soap+xml; charset=utf-8",
+            "Content-Length": Buffer.byteLength(body),
+          };
+    if (soapVersion !== "1.1" && soapAction) headers["SOAPAction"] = `"${soapAction}"`;
+
     const request = https.request(
       {
         agent,
@@ -440,15 +456,84 @@ function resolveCert(body) {
 }
 
 const NFCE_WSDL_NS = "http://www.portalfiscal.inf.br/nfe/wsdl";
+const NFE_NS = "http://www.portalfiscal.inf.br/nfe";
 
-function nfceEnvelope(ambiente, inner, operation, service) {
-  const tpAmb = ambiente === "producao" ? 1 : 2;
-  return `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><${operation} xmlns="${NFCE_WSDL_NS}/${service}">${inner(tpAmb)}</${operation}></soap12:Body></soap12:Envelope>`;
+/**
+ * A Nota Tecnica do SAE-NFC-e define apenas a area de dados e manda seguir o
+ * MOC para o transporte, sem publicar o envelope. O WSDL real exige mTLS, e a
+ * SEFAZ-SP recusa com "Mensagem SOAP invalida" qualquer combinacao diferente
+ * da esperada. Por isso a ponte tenta, em ordem, as combinacoes plausiveis e
+ * para na primeira que a Fazenda aceita (resposta com cStat), informando qual
+ * funcionou. Assim o formato correto e descoberto com dado real.
+ */
+function nfceVariants(service, operation) {
+  const opNs = `${NFCE_WSDL_NS}/${service}`;
+  const wrappers = ["nfceDadosMsg", "nfeDadosMsg", null];
+  const list = [];
+  for (const soapVersion of ["1.2", "1.1"]) {
+    for (const wrapper of wrappers) {
+      list.push({ soapVersion, wrapper, opNs, action: `${opNs}/${operation}` });
+    }
+  }
+  // Ultimo recurso: area de dados direto no Body, sem elemento de operacao.
+  list.push({ soapVersion: "1.2", wrapper: null, opNs: null, action: `${opNs}/${operation}` });
+  return list;
 }
 
-function nfceAction(service, operation) {
-  return `${NFCE_WSDL_NS}/${service}/${operation}`;
+function nfceEnvelopeFor(variant, operation, dataXml) {
+  const env =
+    variant.soapVersion === "1.1"
+      ? { prefix: "soap", ns: "http://schemas.xmlsoap.org/soap/envelope/" }
+      : { prefix: "soap12", ns: "http://www.w3.org/2003/05/soap-envelope" };
+  const inner = variant.wrapper ? `<${variant.wrapper}>${dataXml}</${variant.wrapper}>` : dataXml;
+  const payload = variant.opNs
+    ? `<${operation} xmlns="${variant.opNs}">${inner}</${operation}>`
+    : inner;
+  return `<?xml version="1.0" encoding="utf-8"?><${env.prefix}:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:${env.prefix}="${env.ns}"><${env.prefix}:Body>${payload}</${env.prefix}:Body></${env.prefix}:Envelope>`;
 }
+
+const NFCE_DEADLINE_MS = 38_000;
+
+/**
+ * Executa a consulta NFC-e tentando as variantes de envelope ate a SEFAZ
+ * responder com cStat. Devolve o XML cru e a variante aceita.
+ */
+async function callNfce({ ambiente, agent, endpoint, service, operation, dataXml, stage }) {
+  const deadline = Date.now() + NFCE_DEADLINE_MS;
+  let lastError = null;
+  for (const variant of nfceVariants(service, operation)) {
+    if (Date.now() > deadline) break;
+    const body = nfceEnvelopeFor(variant, operation, dataXml);
+    try {
+      const raw = await callSefaz(
+        body,
+        ambiente,
+        agent,
+        endpoint,
+        stage,
+        variant.action,
+        variant.soapVersion,
+      );
+      if (/<cStat>/i.test(raw)) {
+        const label = `SOAP ${variant.soapVersion}${variant.opNs ? "" : " sem operacao"}${
+          variant.wrapper ? ` / ${variant.wrapper}` : " / sem wrapper"
+        }`;
+        console.log(`[bridge] ${stage}: formato aceito -> ${label}`);
+        return { raw, variante: label };
+      }
+      lastError = new Error(`${stage}: resposta sem cStat (${soapFaultText(raw)})`);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      // Erros que nao sao de formato: nao vale tentar outras variantes.
+      if (/certificad|tempo esgotado|não respondeu|encerrou a resposta|ECONN|EAI_AGAIN/i.test(message)) {
+        throw error;
+      }
+    }
+  }
+  throw lastError ?? new Error(`${stage}: nao foi possivel montar a mensagem aceita pela SEFAZ-SP.`);
+}
+
 
 
 function bridgeError(error) {
@@ -469,24 +554,18 @@ app.post("/nfce/chaves", async (req, res) => {
 
   try {
     const agent = agentFor(cert.pfx, cert.passphrase);
-    const body = nfceEnvelope(
-      ambiente,
-      (tpAmb) =>
-        `<nfceDadosMsg><nfceListagemChaves xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><tpAmb>${tpAmb}</tpAmb><dataHoraInicial>${dataHoraInicial}</dataHoraInicial><dataHoraFinal>${dataHoraFinal}</dataHoraFinal></nfceListagemChaves></nfceDadosMsg>`,
-      "nfceListagemChaves",
-      "NFCeListagemChaves",
-    );
-    const endpoint =
-      (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).chaves;
-    const raw = await callSefaz(
-      body,
+    const tpAmb = ambiente === "producao" ? 1 : 2;
+    const dataXml = `<nfceListagemChaves xmlns="${NFE_NS}" versao="1.00"><tpAmb>${tpAmb}</tpAmb><dataHoraInicial>${dataHoraInicial}</dataHoraInicial><dataHoraFinal>${dataHoraFinal}</dataHoraFinal></nfceListagemChaves>`;
+    const endpoint = (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).chaves;
+    const { raw, variante } = await callNfce({
       ambiente,
       agent,
       endpoint,
-      "listagem de chaves NFC-e",
-      nfceAction("NFCeListagemChaves", "nfceListagemChaves"),
-    );
-
+      service: "NFCeListagemChaves",
+      operation: "nfceListagemChaves",
+      dataXml,
+      stage: "listagem de chaves NFC-e",
+    });
 
     const chaves = [...raw.matchAll(/<chNFCe>(\d{44})<\/chNFCe>/g)].map((m) => m[1]);
     return res.json({
@@ -494,7 +573,9 @@ app.post("/nfce/chaves", async (req, res) => {
       xMotivo: tag(raw, "xMotivo"),
       dhEmisUltNfce: tag(raw, "dhEmisUltNfce"),
       chaves,
+      variante,
     });
+
   } catch (error) {
     console.error("[bridge] falha na listagem NFC-e:", error);
     return res.status(502).json({ error: bridgeError(error) });
@@ -512,23 +593,18 @@ app.post("/nfce/xml", async (req, res) => {
 
   try {
     const agent = agentFor(cert.pfx, cert.passphrase);
-    const body = nfceEnvelope(
-      ambiente,
-      (tpAmb) =>
-        `<nfceDadosMsg><nfceDownloadXML xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><tpAmb>${tpAmb}</tpAmb><chNFCe>${chNFCe}</chNFCe></nfceDownloadXML></nfceDadosMsg>`,
-      "nfceDownloadXML",
-      "NFCeDownloadXML",
-    );
+    const tpAmb = ambiente === "producao" ? 1 : 2;
+    const dataXml = `<nfceDownloadXML xmlns="${NFE_NS}" versao="1.00"><tpAmb>${tpAmb}</tpAmb><chNFCe>${chNFCe}</chNFCe></nfceDownloadXML>`;
     const endpoint = (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).xml;
-    const raw = await callSefaz(
-      body,
+    const { raw, variante } = await callNfce({
       ambiente,
       agent,
       endpoint,
-      "download do XML da NFC-e",
-      nfceAction("NFCeDownloadXML", "nfceDownloadXML"),
-    );
-
+      service: "NFCeDownloadXML",
+      operation: "nfceDownloadXML",
+      dataXml,
+      stage: "download do XML da NFC-e",
+    });
 
     // O retorno pode vir com o XML escapado (&lt;nfeProc...) ou embutido direto.
     const unescaped = raw
@@ -548,7 +624,9 @@ app.post("/nfce/xml", async (req, res) => {
       chNFCe,
       xml: procMatch ? procMatch[0] : nfeMatch ? nfeMatch[0] : null,
       eventos,
+      variante,
     });
+
   } catch (error) {
     console.error("[bridge] falha no download NFC-e:", error);
     return res.status(502).json({ error: bridgeError(error) });
