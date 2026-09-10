@@ -593,23 +593,18 @@ app.post("/nfce/xml", async (req, res) => {
 
   try {
     const agent = agentFor(cert.pfx, cert.passphrase);
-    const body = nfceEnvelope(
-      ambiente,
-      (tpAmb) =>
-        `<nfceDadosMsg><nfceDownloadXML xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><tpAmb>${tpAmb}</tpAmb><chNFCe>${chNFCe}</chNFCe></nfceDownloadXML></nfceDadosMsg>`,
-      "nfceDownloadXML",
-      "NFCeDownloadXML",
-    );
+    const tpAmb = ambiente === "producao" ? 1 : 2;
+    const dataXml = `<nfceDownloadXML xmlns="${NFE_NS}" versao="1.00"><tpAmb>${tpAmb}</tpAmb><chNFCe>${chNFCe}</chNFCe></nfceDownloadXML>`;
     const endpoint = (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).xml;
-    const raw = await callSefaz(
-      body,
+    const { raw, variante } = await callNfce({
       ambiente,
       agent,
       endpoint,
-      "download do XML da NFC-e",
-      nfceAction("NFCeDownloadXML", "nfceDownloadXML"),
-    );
-
+      service: "NFCeDownloadXML",
+      operation: "nfceDownloadXML",
+      dataXml,
+      stage: "download do XML da NFC-e",
+    });
 
     // O retorno pode vir com o XML escapado (&lt;nfeProc...) ou embutido direto.
     const unescaped = raw
@@ -629,7 +624,9 @@ app.post("/nfce/xml", async (req, res) => {
       chNFCe,
       xml: procMatch ? procMatch[0] : nfeMatch ? nfeMatch[0] : null,
       eventos,
+      variante,
     });
+
   } catch (error) {
     console.error("[bridge] falha no download NFC-e:", error);
     return res.status(502).json({ error: bridgeError(error) });
