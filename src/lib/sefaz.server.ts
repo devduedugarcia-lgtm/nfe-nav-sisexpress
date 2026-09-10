@@ -359,6 +359,8 @@ export type NfceKeysResponse = {
   xMotivo: string | null;
   dhEmisUltNfce: string | null;
   chaves: string[];
+  /** Formato de mensagem SOAP aceito pela SEFAZ-SP (diagnóstico). */
+  variante?: string | null;
 };
 
 export type NfceXmlResponse = {
@@ -367,6 +369,7 @@ export type NfceXmlResponse = {
   chNFCe: string;
   xml: string | null;
   eventos: string[];
+  variante?: string | null;
 };
 
 type NfceCert = { pfxBase64: string; certPassword: string };
