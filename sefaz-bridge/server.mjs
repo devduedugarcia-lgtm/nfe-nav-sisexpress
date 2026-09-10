@@ -554,24 +554,18 @@ app.post("/nfce/chaves", async (req, res) => {
 
   try {
     const agent = agentFor(cert.pfx, cert.passphrase);
-    const body = nfceEnvelope(
-      ambiente,
-      (tpAmb) =>
-        `<nfceDadosMsg><nfceListagemChaves xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><tpAmb>${tpAmb}</tpAmb><dataHoraInicial>${dataHoraInicial}</dataHoraInicial><dataHoraFinal>${dataHoraFinal}</dataHoraFinal></nfceListagemChaves></nfceDadosMsg>`,
-      "nfceListagemChaves",
-      "NFCeListagemChaves",
-    );
-    const endpoint =
-      (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).chaves;
-    const raw = await callSefaz(
-      body,
+    const tpAmb = ambiente === "producao" ? 1 : 2;
+    const dataXml = `<nfceListagemChaves xmlns="${NFE_NS}" versao="1.00"><tpAmb>${tpAmb}</tpAmb><dataHoraInicial>${dataHoraInicial}</dataHoraInicial><dataHoraFinal>${dataHoraFinal}</dataHoraFinal></nfceListagemChaves>`;
+    const endpoint = (NFCE_ENDPOINTS[ambiente] ?? NFCE_ENDPOINTS.homologacao).chaves;
+    const { raw, variante } = await callNfce({
       ambiente,
       agent,
       endpoint,
-      "listagem de chaves NFC-e",
-      nfceAction("NFCeListagemChaves", "nfceListagemChaves"),
-    );
-
+      service: "NFCeListagemChaves",
+      operation: "nfceListagemChaves",
+      dataXml,
+      stage: "listagem de chaves NFC-e",
+    });
 
     const chaves = [...raw.matchAll(/<chNFCe>(\d{44})<\/chNFCe>/g)].map((m) => m[1]);
     return res.json({
@@ -579,7 +573,9 @@ app.post("/nfce/chaves", async (req, res) => {
       xMotivo: tag(raw, "xMotivo"),
       dhEmisUltNfce: tag(raw, "dhEmisUltNfce"),
       chaves,
+      variante,
     });
+
   } catch (error) {
     console.error("[bridge] falha na listagem NFC-e:", error);
     return res.status(502).json({ error: bridgeError(error) });
