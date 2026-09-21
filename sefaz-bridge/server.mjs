@@ -493,6 +493,12 @@ function nfceEnvelopeFor(variant, operation, dataXml) {
 }
 
 const NFCE_DEADLINE_MS = 38_000;
+const nfceVariantCache = new Map();
+
+function isInvalidNfceSoap(raw) {
+  const reason = `${tag(raw, "xMotivo") ?? ""} ${soapFaultText(raw)}`;
+  return /mensagem\s+soap\s+inv[aá]lida|invalid\s+soap/i.test(reason);
+}
 
 /**
  * Executa a consulta NFC-e tentando as variantes de envelope ate a SEFAZ
@@ -501,7 +507,12 @@ const NFCE_DEADLINE_MS = 38_000;
 async function callNfce({ ambiente, agent, endpoint, service, operation, dataXml, stage }) {
   const deadline = Date.now() + NFCE_DEADLINE_MS;
   let lastError = null;
-  for (const variant of nfceVariants(service, operation)) {
+  const cached = nfceVariantCache.get(service);
+  const candidates = nfceVariants(service, operation);
+  const variants = cached
+    ? [cached, ...candidates.filter((candidate) => JSON.stringify(candidate) !== JSON.stringify(cached))]
+    : candidates;
+  for (const variant of variants) {
     if (Date.now() > deadline) break;
     const body = nfceEnvelopeFor(variant, operation, dataXml);
     try {
@@ -514,14 +525,15 @@ async function callNfce({ ambiente, agent, endpoint, service, operation, dataXml
         variant.action,
         variant.soapVersion,
       );
-      if (/<cStat>/i.test(raw)) {
+      if (/<cStat>/i.test(raw) && !isInvalidNfceSoap(raw)) {
         const label = `SOAP ${variant.soapVersion}${variant.opNs ? "" : " sem operacao"}${
           variant.wrapper ? ` / ${variant.wrapper}` : " / sem wrapper"
         }`;
+        nfceVariantCache.set(service, variant);
         console.log(`[bridge] ${stage}: formato aceito -> ${label}`);
         return { raw, variante: label };
       }
-      lastError = new Error(`${stage}: resposta sem cStat (${soapFaultText(raw)})`);
+      lastError = new Error(`${stage}: ${tag(raw, "xMotivo") ?? soapFaultText(raw)}`);
     } catch (error) {
       lastError = error;
       const message = error instanceof Error ? error.message : String(error);
