@@ -41,7 +41,7 @@ const JSON_SECRET =
   /("(?:password|senha|token|authorization|certPassword|pfxBase64)"\s*:\s*")[^"]*(")/gi;
 const ACCESS_KEY = /\b\d{44}\b/g;
 const CNPJ_CPF =
-  /\b(?:\d{3}[.\s-]?\d{3}[.\s-]?\d{3}[-\s]?\d{2}|\d{2}[.\s-]?\d{3}[.\s-]?\d{3}[\/\s-]?\d{4}[-\s]?\d{2}|\d{11}|\d{14})\b/g;
+  /\b(?:\d{3}[.\s-]?\d{3}[.\s-]?\d{3}[-\s]?\d{2}|\d{2}[.\s-]?\d{3}[.\s-]?\d{3}[/\s-]?\d{4}[-\s]?\d{2}|\d{11}|\d{14})\b/g;
 
 export function redactSoapDiagnostic(value: string): { text: string; count: number } {
   let count = 0;
