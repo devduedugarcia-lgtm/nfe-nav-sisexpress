@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as PendingApprovalRouteImport } from './routes/pending-approval'
 import { Route as AuthenticatedCertificateRouteImport } from './routes/_authenticated/certificate'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedAdminSoapDiagnosticRouteImport } from './routes/_authenticated/admin.soap-diagnostic'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin.users'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,6 +42,12 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAdminSoapDiagnosticRoute =
+  AuthenticatedAdminSoapDiagnosticRouteImport.update({
+    id: '/admin/soap-diagnostic',
+    path: '/admin/soap-diagnostic',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   id: '/admin/users',
   path: '/admin/users',
@@ -52,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/pending-approval': typeof PendingApprovalRoute
   '/certificate': typeof AuthenticatedCertificateRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/admin/soap-diagnostic': typeof AuthenticatedAdminSoapDiagnosticRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
 }
 export interface FileRoutesByTo {
@@ -59,6 +67,7 @@ export interface FileRoutesByTo {
   '/pending-approval': typeof PendingApprovalRoute
   '/certificate': typeof AuthenticatedCertificateRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/admin/soap-diagnostic': typeof AuthenticatedAdminSoapDiagnosticRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
 }
 export interface FileRoutesById {
@@ -68,14 +77,26 @@ export interface FileRoutesById {
   '/pending-approval': typeof PendingApprovalRoute
   '/_authenticated/certificate': typeof AuthenticatedCertificateRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/admin/soap-diagnostic': typeof AuthenticatedAdminSoapDiagnosticRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/pending-approval' | '/certificate' | '/dashboard' | '/admin/users'
+    | '/'
+    | '/pending-approval'
+    | '/certificate'
+    | '/dashboard'
+    | '/admin/soap-diagnostic'
+    | '/admin/users'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/pending-approval' | '/certificate' | '/dashboard' | '/admin/users'
+  to:
+    | '/'
+    | '/pending-approval'
+    | '/certificate'
+    | '/dashboard'
+    | '/admin/soap-diagnostic'
+    | '/admin/users'
   id:
     | '__root__'
     | '/'
@@ -83,6 +104,7 @@ export interface FileRouteTypes {
     | '/pending-approval'
     | '/_authenticated/certificate'
     | '/_authenticated/dashboard'
+    | '/_authenticated/admin/soap-diagnostic'
     | '/_authenticated/admin/users'
   fileRoutesById: FileRoutesById
 }
@@ -129,6 +151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/soap-diagnostic': {
+      id: '/_authenticated/admin/soap-diagnostic'
+      path: '/admin/soap-diagnostic'
+      fullPath: '/admin/soap-diagnostic'
+      preLoaderRoute: typeof AuthenticatedAdminSoapDiagnosticRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/users': {
       id: '/_authenticated/admin/users'
       path: '/admin/users'
@@ -142,12 +171,14 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCertificateRoute: typeof AuthenticatedCertificateRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedAdminSoapDiagnosticRoute: typeof AuthenticatedAdminSoapDiagnosticRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCertificateRoute: AuthenticatedCertificateRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedAdminSoapDiagnosticRoute: AuthenticatedAdminSoapDiagnosticRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
 }
 
