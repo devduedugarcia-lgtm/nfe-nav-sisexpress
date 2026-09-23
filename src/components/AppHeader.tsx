@@ -33,19 +33,35 @@ export function AppHeader({ isAdmin = false, email }: Props) {
         </Link>
 
         <nav className="flex items-center gap-1">
-          <Link to="/dashboard" className={linkClass} activeProps={{ className: "bg-secondary text-foreground" }}>
+          <Link
+            to="/dashboard"
+            className={linkClass}
+            activeProps={{ className: "bg-secondary text-foreground" }}
+          >
             Painel
           </Link>
-          <Link to="/certificate" className={linkClass} activeProps={{ className: "bg-secondary text-foreground" }}>
+          <Link
+            to="/certificate"
+            className={linkClass}
+            activeProps={{ className: "bg-secondary text-foreground" }}
+          >
             Certificado
           </Link>
           {isAdmin && (
             <>
-              <Link to="/admin/soap-diagnostic" className={linkClass} activeProps={{ className: "bg-secondary text-foreground" }}>
+              <Link
+                to="/admin/soap-diagnostic"
+                className={linkClass}
+                activeProps={{ className: "bg-secondary text-foreground" }}
+              >
                 <FileSearch className="mr-1 inline size-4" />
                 Diagnóstico SOAP
               </Link>
-              <Link to="/admin/users" className={linkClass} activeProps={{ className: "bg-secondary text-foreground" }}>
+              <Link
+                to="/admin/users"
+                className={linkClass}
+                activeProps={{ className: "bg-secondary text-foreground" }}
+              >
                 Usuários
               </Link>
             </>

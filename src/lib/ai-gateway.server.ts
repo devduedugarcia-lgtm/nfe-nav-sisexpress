@@ -86,10 +86,14 @@ function safeGatewayMessage(error: unknown): string {
     return upstream || "O uso do Lovable AI está bloqueado pelas configurações do workspace.";
   }
   if (status === 429) {
-    return upstream || "O Lovable AI recebeu muitas solicitações. Aguarde um pouco e tente novamente.";
+    return (
+      upstream || "O Lovable AI recebeu muitas solicitações. Aguarde um pouco e tente novamente."
+    );
   }
   if (status && status >= 500) {
-    return upstream || "O Lovable AI está temporariamente indisponível. Tente novamente mais tarde.";
+    return (
+      upstream || "O Lovable AI está temporariamente indisponível. Tente novamente mais tarde."
+    );
   }
   return upstream || "O Lovable AI recusou os dados enviados. Revise o conteúdo e tente novamente.";
 }

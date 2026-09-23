@@ -2,7 +2,14 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { AlertTriangle, Check, Clipboard, FileSearch, LoaderCircle, ShieldAlert } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Clipboard,
+  FileSearch,
+  LoaderCircle,
+  ShieldAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { AppHeader } from "@/components/AppHeader";
@@ -13,10 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getSession } from "@/lib/nfe.functions";
-import {
-  analyzeSoapDiagnostic,
-  type SoapDiagnosticResult,
-} from "@/lib/soap-diagnostic.functions";
+import { analyzeSoapDiagnostic, type SoapDiagnosticResult } from "@/lib/soap-diagnostic.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/soap-diagnostic")({
   head: () => ({
@@ -141,7 +145,8 @@ function SoapDiagnosticPage() {
             <CardHeader>
               <CardTitle>Dados para análise</CardTitle>
               <CardDescription>
-                Informe o erro e inclua os envelopes disponíveis para obter um diagnóstico mais preciso.
+                Informe o erro e inclua os envelopes disponíveis para obter um diagnóstico mais
+                preciso.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -206,11 +211,7 @@ function SoapDiagnosticPage() {
                 </div>
 
                 <Button type="submit" disabled={!hasContent || analysis.isPending}>
-                  {analysis.isPending ? (
-                    <LoaderCircle className="animate-spin" />
-                  ) : (
-                    <FileSearch />
-                  )}
+                  {analysis.isPending ? <LoaderCircle className="animate-spin" /> : <FileSearch />}
                   {analysis.isPending ? "Analisando…" : "Analisar erro"}
                 </Button>
               </form>
@@ -233,7 +234,8 @@ function SoapDiagnosticPage() {
                 <FileSearch className="size-8 text-muted-foreground" />
                 <h2 className="mt-3 font-semibold text-foreground">O diagnóstico aparecerá aqui</h2>
                 <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                  Quanto mais completa for a mensagem recebida, mais específica poderá ser a análise.
+                  Quanto mais completa for a mensagem recebida, mais específica poderá ser a
+                  análise.
                 </p>
               </div>
             )}
@@ -290,7 +292,15 @@ function ResultSection({ title, children }: { title: string; children: React.Rea
   );
 }
 
-function ResultList({ title, items, ordered = false }: { title: string; items: string[]; ordered?: boolean }) {
+function ResultList({
+  title,
+  items,
+  ordered = false,
+}: {
+  title: string;
+  items: string[];
+  ordered?: boolean;
+}) {
   const List = ordered ? "ol" : "ul";
   return (
     <ResultSection title={title}>
