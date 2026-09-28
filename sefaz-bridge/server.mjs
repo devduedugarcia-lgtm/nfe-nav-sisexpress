@@ -197,7 +197,9 @@ function buildEnvelope({ cnpj, uf, ambiente, ultNSU }) {
 }
 
 function tag(xml, name) {
-  const match = xml.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`));
+  const match = xml.match(
+    new RegExp(`<(?:[\\w.-]+:)?${name}\\b[^>]*>([\\s\\S]*?)</(?:[\\w.-]+:)?${name}>`),
+  );
   return match ? match[1].trim() : null;
 }
 
@@ -458,26 +460,15 @@ function resolveCert(body) {
 const NFCE_WSDL_NS = "http://www.portalfiscal.inf.br/nfe/wsdl";
 const NFE_NS = "http://www.portalfiscal.inf.br/nfe";
 
-/**
- * A Nota Tecnica do SAE-NFC-e define apenas a area de dados e manda seguir o
- * MOC para o transporte, sem publicar o envelope. O WSDL real exige mTLS, e a
- * SEFAZ-SP recusa com "Mensagem SOAP invalida" qualquer combinacao diferente
- * da esperada. Por isso a ponte tenta, em ordem, as combinacoes plausiveis e
- * para na primeira que a Fazenda aceita (resposta com cStat), informando qual
- * funcionou. Assim o formato correto e descoberto com dado real.
- */
-function nfceVariants(service, operation) {
+/** Formato unico indicado pela NT do SAE-NFC-e ao remeter ao padrao do MOC. */
+function nfceVariant(service, operation) {
   const opNs = `${NFCE_WSDL_NS}/${service}`;
-  const wrappers = ["nfceDadosMsg", "nfeDadosMsg", null];
-  const list = [];
-  for (const soapVersion of ["1.2", "1.1"]) {
-    for (const wrapper of wrappers) {
-      list.push({ soapVersion, wrapper, opNs, action: `${opNs}/${operation}` });
-    }
-  }
-  // Ultimo recurso: area de dados direto no Body, sem elemento de operacao.
-  list.push({ soapVersion: "1.2", wrapper: null, opNs: null, action: `${opNs}/${operation}` });
-  return list;
+  return {
+    soapVersion: "1.2",
+    wrapper: "nfeDadosMsg",
+    opNs,
+    action: `${opNs}/${operation}`,
+  };
 }
 
 function nfceEnvelopeFor(variant, operation, dataXml) {
@@ -492,58 +483,28 @@ function nfceEnvelopeFor(variant, operation, dataXml) {
   return `<?xml version="1.0" encoding="utf-8"?><${env.prefix}:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:${env.prefix}="${env.ns}"><${env.prefix}:Body>${payload}</${env.prefix}:Body></${env.prefix}:Envelope>`;
 }
 
-const NFCE_DEADLINE_MS = 38_000;
-const nfceVariantCache = new Map();
-
-function isInvalidNfceSoap(raw) {
-  const reason = `${tag(raw, "xMotivo") ?? ""} ${soapFaultText(raw)}`;
-  return /mensagem\s+soap\s+inv[aá]lida|invalid\s+soap/i.test(reason);
-}
-
 /**
- * Executa a consulta NFC-e tentando as variantes de envelope ate a SEFAZ
- * responder com cStat. Devolve o XML cru e a variante aceita.
+ * Executa uma unica consulta NFC-e. Repetir variantes na mesma acao consome o
+ * limite por IP da SEFAZ-SP e pode causar/renovar a rejeicao 656.
  */
 async function callNfce({ ambiente, agent, endpoint, service, operation, dataXml, stage }) {
-  const deadline = Date.now() + NFCE_DEADLINE_MS;
-  let lastError = null;
-  const cached = nfceVariantCache.get(service);
-  const candidates = nfceVariants(service, operation);
-  const variants = cached
-    ? [cached, ...candidates.filter((candidate) => JSON.stringify(candidate) !== JSON.stringify(cached))]
-    : candidates;
-  for (const variant of variants) {
-    if (Date.now() > deadline) break;
-    const body = nfceEnvelopeFor(variant, operation, dataXml);
-    try {
-      const raw = await callSefaz(
-        body,
-        ambiente,
-        agent,
-        endpoint,
-        stage,
-        variant.action,
-        variant.soapVersion,
-      );
-      if (/<cStat>/i.test(raw) && !isInvalidNfceSoap(raw)) {
-        const label = `SOAP ${variant.soapVersion}${variant.opNs ? "" : " sem operacao"}${
-          variant.wrapper ? ` / ${variant.wrapper}` : " / sem wrapper"
-        }`;
-        nfceVariantCache.set(service, variant);
-        console.log(`[bridge] ${stage}: formato aceito -> ${label}`);
-        return { raw, variante: label };
-      }
-      lastError = new Error(`${stage}: ${tag(raw, "xMotivo") ?? soapFaultText(raw)}`);
-    } catch (error) {
-      lastError = error;
-      const message = error instanceof Error ? error.message : String(error);
-      // Erros que nao sao de formato: nao vale tentar outras variantes.
-      if (/certificad|tempo esgotado|não respondeu|encerrou a resposta|ECONN|EAI_AGAIN/i.test(message)) {
-        throw error;
-      }
-    }
+  const variant = nfceVariant(service, operation);
+  const body = nfceEnvelopeFor(variant, operation, dataXml);
+  const raw = await callSefaz(
+    body,
+    ambiente,
+    agent,
+    endpoint,
+    stage,
+    variant.action,
+    variant.soapVersion,
+  );
+  const code = tag(raw, "cStat");
+  if (!code) {
+    throw new Error(`${stage}: ${tag(raw, "xMotivo") ?? soapFaultText(raw)}`);
   }
-  throw lastError ?? new Error(`${stage}: nao foi possivel montar a mensagem aceita pela SEFAZ-SP.`);
+  const label = `SOAP ${variant.soapVersion} / ${variant.wrapper}`;
+  return { raw, variante: label };
 }
 
 
@@ -579,7 +540,9 @@ app.post("/nfce/chaves", async (req, res) => {
       stage: "listagem de chaves NFC-e",
     });
 
-    const chaves = [...raw.matchAll(/<chNFCe>(\d{44})<\/chNFCe>/g)].map((m) => m[1]);
+    const chaves = [
+      ...raw.matchAll(/<(?:[\w.-]+:)?chNFCe\b[^>]*>(\d{44})<\/(?:[\w.-]+:)?chNFCe>/g),
+    ].map((m) => m[1]);
     return res.json({
       cStat: tag(raw, "cStat"),
       xMotivo: tag(raw, "xMotivo"),
