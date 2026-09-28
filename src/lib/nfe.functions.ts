@@ -174,18 +174,6 @@ export const clearSefazBlock = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const clearNfceBlock = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { supabase, userId } = context;
-    const { error } = await supabase
-      .from("sefaz_accounts")
-      .update({ nfce_blocked_until: null })
-      .eq("user_id", userId);
-    if (error) throw new Error(error.message);
-    return { ok: true };
-  });
-
 /**
  * Importa as NFC-e emitidas em SP via SAE-NFC-e: lista as chaves do período
  * (`NFCeListagemChaves`) e baixa o XML (`NFCeDownloadXML`) apenas das chaves
@@ -269,6 +257,9 @@ export const syncNfceSP = createServerFn({ method: "POST" })
     let cursor = start;
     let status = "Sem retorno da SEFAZ";
     let blockedUntil: string | null = null;
+    let listStatusCode: string | null = null;
+    let listStatusReason: string | null = null;
+    let soapVariant: string | null = null;
 
     for (let round = 0; round < MAX_ROUNDS; round += 1) {
       const result = await listNfceKeys({
@@ -279,6 +270,9 @@ export const syncNfceSP = createServerFn({ method: "POST" })
         certPassword,
       });
 
+      listStatusCode = result.cStat;
+      listStatusReason = result.xMotivo;
+      soapVariant = result.variante ?? soapVariant;
       status = describeNfceStatus(result.cStat, result.xMotivo);
       for (const key of result.chaves ?? []) if (!chaves.includes(key)) chaves.push(key);
 
@@ -309,7 +303,9 @@ export const syncNfceSP = createServerFn({ method: "POST" })
 
     const pending = chaves.filter((key) => !existing.includes(key)).slice(0, MAX_DOWNLOADS);
     let imported = 0;
+    let downloaded = 0;
     let skipped = 0;
+    const skipReasons = new Map<string, number>();
 
     for (const chNFCe of pending) {
       const result = await downloadNfceXml({
@@ -325,9 +321,14 @@ export const syncNfceSP = createServerFn({ method: "POST" })
         break;
       }
 
+      downloaded += 1;
       const invoice = result.xml ? parseNfceDocument({ chNFCe, xml: result.xml }, account.cnpj) : null;
       if (!invoice) {
         skipped += 1;
+        const reason = result.xml
+          ? "XML devolvido em formato não reconhecido"
+          : describeNfceStatus(result.cStat, result.xMotivo);
+        skipReasons.set(reason, (skipReasons.get(reason) ?? 0) + 1);
         continue;
       }
 
@@ -354,12 +355,17 @@ export const syncNfceSP = createServerFn({ method: "POST" })
 
     return {
       found: chaves.length,
-      downloaded: pending.length,
+      downloaded,
       imported,
       skipped,
       alreadyStored: existing.length,
       status,
       blockedUntil,
+      blocked: listStatusCode === "656" || status.startsWith("656"),
+      listStatusCode,
+      listStatusReason,
+      soapVariant,
+      skipReasons: [...skipReasons.entries()].map(([reason, count]) => ({ reason, count })),
     };
   });
 

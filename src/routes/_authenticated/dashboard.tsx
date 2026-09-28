@@ -66,7 +66,6 @@ import {
 } from "@/lib/download";
 import {
   clearInvoices,
-  clearNfceBlock,
   clearSefazBlock,
   exportInvoicesZip,
   getInvoiceXml,
@@ -158,7 +157,6 @@ function DashboardPage() {
   const persistSefazAccount = useServerFn(saveSefazAccount);
   const resetCursor = useServerFn(resetSefazCursor);
   const releaseBlock = useServerFn(clearSefazBlock);
-  const releaseNfceBlock = useServerFn(clearNfceBlock);
   const runBridgeTest = useServerFn(testSefazBridge);
   const fetchXml = useServerFn(getInvoiceXml);
   const exportZip = useServerFn(exportInvoicesZip);
@@ -175,6 +173,19 @@ function DashboardPage() {
   const [configOpen, setConfigOpen] = useState(false);
   const [form, setForm] = useState({ cnpj: "", uf: "SP", environment: "homologacao" });
   const [nfceRange, setNfceRange] = useState(() => periodRange("last-7"));
+  const [lastNfceResult, setLastNfceResult] = useState<{
+    found: number;
+    downloaded: number;
+    imported: number;
+    skipped: number;
+    alreadyStored: number;
+    status: string;
+    blocked: boolean;
+    listStatusCode: string | null;
+    listStatusReason: string | null;
+    soapVariant: string | null;
+    skipReasons: Array<{ reason: string; count: number }>;
+  } | null>(null);
 
   const session = useQuery({ queryKey: ["session"], queryFn: () => loadSession() });
 
@@ -274,11 +285,14 @@ function DashboardPage() {
   const nfceSync = useMutation({
     mutationFn: () => runNfceSync({ data: { from: nfceRange.from, to: nfceRange.to } }),
     onSuccess: (result) => {
+      setLastNfceResult(result);
       const resumo = `${result.found} chave(s) no período · ${result.imported} nota(s) gravada(s)${
         result.skipped > 0 ? ` · ${result.skipped} sem XML utilizável` : ""
       }`;
-      if (result.imported > 0) toast.success(`${resumo} · ${result.status}`);
-      else toast.info(`${result.status} · ${resumo}`);
+      if (result.blocked) toast.error(`${result.status} · nenhuma nova tentativa será permitida durante o bloqueio.`);
+      else if (result.imported > 0) toast.success(`${resumo} · ${result.status}`);
+      else if (result.listStatusCode === "107") toast.info(`${result.status} · ${resumo}`);
+      else toast.warning(`${result.status} · ${resumo}`);
       if (result.blockedUntil) {
         const libera = new Date(result.blockedUntil).toLocaleTimeString("pt-BR", {
           hour: "2-digit",
@@ -291,16 +305,6 @@ function DashboardPage() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
-
-  const unblockNfce = useMutation({
-    mutationFn: () => releaseNfceBlock(),
-    onSuccess: () => {
-      toast.success("Bloqueio da NFC-e liberado.");
-      queryClient.invalidateQueries({ queryKey: ["sefaz-account"] });
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
 
   const saveAccount = useMutation({
     mutationFn: () =>
@@ -620,17 +624,6 @@ function DashboardPage() {
                     ? `NFC-e disponível às ${nfceBlockedLabel}`
                     : "Sincronizar NFC-e (SP)"}
                 </Button>
-                {isNfceBlocked && (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => unblockNfce.mutate()}
-                    disabled={unblockNfce.isPending}
-                  >
-                    {unblockNfce.isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
-                    Liberar consulta agora
-                  </Button>
-                )}
               </div>
               <p className="text-xs text-muted-foreground md:col-span-3">
                 Período máximo de 100 dias (limite da SEFAZ-SP).
@@ -640,6 +633,20 @@ function DashboardPage() {
                     }.`
                   : ""}
               </p>
+              {lastNfceResult && (
+                <div className="grid gap-2 border-t border-border pt-3 text-xs md:col-span-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <p><span className="font-medium text-foreground">Retorno:</span> {lastNfceResult.listStatusCode ?? "—"} · {lastNfceResult.listStatusReason ?? "Sem motivo informado"}</p>
+                  <p><span className="font-medium text-foreground">Chaves:</span> {lastNfceResult.found} encontradas · {lastNfceResult.alreadyStored} já gravadas</p>
+                  <p><span className="font-medium text-foreground">XMLs:</span> {lastNfceResult.downloaded} baixados · {lastNfceResult.skipped} ignorados</p>
+                  <p><span className="font-medium text-foreground">Importação:</span> {lastNfceResult.imported} notas gravadas</p>
+                  {lastNfceResult.soapVariant && (
+                    <p className="sm:col-span-2"><span className="font-medium text-foreground">Formato:</span> {lastNfceResult.soapVariant}</p>
+                  )}
+                  {lastNfceResult.skipReasons.map((item) => (
+                    <p key={item.reason} className="sm:col-span-2"><span className="font-medium text-foreground">Ignoradas:</span> {item.count} · {item.reason}</p>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
